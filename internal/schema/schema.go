@@ -148,12 +148,12 @@ func applyJSONSchemaTag(schema schemaMap, tag string) {
 	for _, part := range strings.Split(tag, ",") {
 		part = strings.TrimSpace(part)
 
-		if strings.HasPrefix(part, "description=") {
-			schema["description"] = strings.TrimPrefix(part, "description=")
+		if after, ok := strings.CutPrefix(part, "description="); ok {
+			schema["description"] = after
 		}
 
-		if strings.HasPrefix(part, "enum=") {
-			values := strings.Split(strings.TrimPrefix(part, "enum="), "|")
+		if after, ok := strings.CutPrefix(part, "enum="); ok {
+			values := strings.Split(after, "|")
 			schema["enum"] = values
 		}
 	}

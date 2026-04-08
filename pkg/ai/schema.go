@@ -3,7 +3,7 @@ package ai
 import (
 	"encoding/json"
 
-	"github.com/aarock1234/ai/pkg/schema"
+	"github.com/aarock1234/ai/internal/schema"
 )
 
 // SchemaFor generates a JSON Schema from Go type T via reflection.

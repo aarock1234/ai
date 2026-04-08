@@ -35,5 +35,4 @@ go.work.sum
 # .vscode/
 
 # LLM files
-.llm/
 plans/

@@ -7,12 +7,12 @@ package openai
 
 import "encoding/json"
 
-// chatRequest is the OpenAI chat completions request body.
-type chatRequest struct {
+// ChatRequest is the OpenAI chat completions request body.
+type ChatRequest struct {
 	Model          string          `json:"model"`
 	Messages       []chatMessage   `json:"messages"`
 	Temperature    *float64        `json:"temperature,omitempty"`
-	MaxTokens      *int            `json:"max_tokens,omitempty"`
+	MaxTokens      *int            `json:"max_completion_tokens,omitempty"`
 	TopP           *float64        `json:"top_p,omitempty"`
 	Stop           []string        `json:"stop,omitempty"`
 	Tools          []chatTool      `json:"tools,omitempty"`
@@ -74,8 +74,8 @@ type jsonSchemaSpec struct {
 	Strict bool            `json:"strict"`
 }
 
-// chatResponse is the OpenAI chat completions response.
-type chatResponse struct {
+// ChatResponse is the OpenAI chat completions response.
+type ChatResponse struct {
 	ID      string       `json:"id"`
 	Choices []chatChoice `json:"choices"`
 	Usage   wireUsage    `json:"usage"`

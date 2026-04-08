@@ -162,8 +162,9 @@ func (s *StreamResult) Result() (*GenerateResult, error) {
 	s.mu.Unlock()
 
 	// Consume remaining stream.
-	for range s.Text() {
-	}
+	s.Text()(func(string) bool {
+		return true
+	})
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -8,10 +8,10 @@ import (
 
 // EncodeRequest converts a normalized model.Request into the OpenAI
 // chat completions wire format.
-func EncodeRequest(modelID string, req *model.Request, stream bool) (*chatRequest, error) {
+func EncodeRequest(modelID string, req *model.Request, stream bool) (*ChatRequest, error) {
 	msgs := convertMessages(req.Messages)
 
-	cr := &chatRequest{
+	cr := &ChatRequest{
 		Model:       modelID,
 		Messages:    msgs,
 		Temperature: req.Temperature,
@@ -42,7 +42,7 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*chatReques
 
 // DecodeResponse converts an OpenAI chat completions response into
 // the normalized model.Response.
-func DecodeResponse(resp *chatResponse) *model.Response {
+func DecodeResponse(resp *ChatResponse) *model.Response {
 	if len(resp.Choices) == 0 {
 		return &model.Response{
 			FinishReason: model.FinishReasonUnknown,
@@ -217,6 +217,6 @@ func mapFinishReason(reason string) model.FinishReason {
 }
 
 // MarshalRequest serializes a chatRequest to JSON.
-func MarshalRequest(req *chatRequest) ([]byte, error) {
+func MarshalRequest(req *ChatRequest) ([]byte, error) {
 	return json.Marshal(req)
 }

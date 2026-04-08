@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/aarock1234/ai/pkg/apierror"
+	"github.com/aarock1234/ai/internal/apierror"
 	"github.com/aarock1234/ai/pkg/model"
 )
 

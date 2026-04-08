@@ -52,8 +52,8 @@ func (p *Provider) Embedding(modelID string) model.EmbeddingModel {
 }
 
 // Chat creates a language model for OpenAI chat completions. The
-// model ID should be a valid OpenAI model name (e.g. "gpt-4o",
-// "gpt-4o-mini"). If no API key is provided via WithAPIKey, the
+// model ID should be a valid OpenAI model name (e.g. "gpt-5.4",
+// ""). If no API key is provided via WithAPIKey, the
 // OPENAI_API_KEY environment variable is used.
 func Chat(modelID string, opts ...Option) model.Model {
 	cfg := config{

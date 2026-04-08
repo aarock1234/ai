@@ -23,7 +23,7 @@ func TestEncodeRequestBasic(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -38,8 +38,8 @@ func TestEncodeRequestBasic(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if raw["model"] != "gpt-4o" {
-		t.Errorf("model = %v, want gpt-4o", raw["model"])
+	if raw["model"] != "gpt-5.4" {
+		t.Errorf("model = %v, want gpt-5.4", raw["model"])
 	}
 
 	msgs, ok := raw["messages"].([]any)
@@ -74,7 +74,7 @@ func TestEncodeRequestWithTools(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestEncodeRequestStreaming(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, true)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, true)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestEncodeRequestWithTemperature(t *testing.T) {
 		MaxTokens:   &maxTokens,
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -177,8 +177,8 @@ func TestEncodeRequestWithTemperature(t *testing.T) {
 		t.Errorf("temperature = %v, want 0.7", raw["temperature"])
 	}
 
-	if raw["max_tokens"] != float64(100) {
-		t.Errorf("max_tokens = %v, want 100", raw["max_tokens"])
+	if raw["max_completion_tokens"] != float64(100) {
+		t.Errorf("max_completion_tokens = %v, want 100", raw["max_completion_tokens"])
 	}
 }
 
@@ -200,7 +200,7 @@ func TestEncodeRequestWithResponseFormat(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestEncodeRequestToolCallMessage(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestDoRequestMockServer(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestDoRequestErrorStatus(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -492,7 +492,7 @@ func TestDoRequestToolCallResponse(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -654,7 +654,7 @@ func TestDecodeResponseEmptyChoices(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -715,7 +715,7 @@ func TestDoStreamRequestMockServer(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, true)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, true)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
@@ -774,7 +774,7 @@ func TestExtraHeadersSent(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-4o", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}

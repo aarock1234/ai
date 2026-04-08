@@ -56,7 +56,7 @@ func (p *Provider) Embedding(_ string) model.EmbeddingModel {
 
 // Chat creates a language model for OpenRouter chat completions.
 // The model ID uses OpenRouter's provider-prefixed format (e.g.
-// "openai/gpt-4o", "anthropic/claude-sonnet-4-20250514"). If no API key is
+// "openai/gpt-5.4", "anthropic/claude-sonnet-4-20250514"). If no API key is
 // provided via WithAPIKey, the OPENROUTER_API_KEY environment
 // variable is used.
 func Chat(modelID string, opts ...Option) model.Model {

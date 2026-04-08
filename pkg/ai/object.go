@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/aarock1234/ai/internal/schema"
 	"github.com/aarock1234/ai/pkg/model"
-	"github.com/aarock1234/ai/pkg/schema"
 )
 
 // GenerateObject generates a structured response matching type T. It

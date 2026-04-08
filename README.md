@@ -31,7 +31,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	result, err := ai.GenerateText(ctx, openai.Chat("gpt-4o"),
+	result, err := ai.GenerateText(ctx, openai.Chat("gpt-5.4"),
 		ai.WithPrompt("What is the capital of France?"),
 	)
 	if err != nil {
@@ -45,7 +45,7 @@ func main() {
 ## Streaming
 
 ```go
-stream, err := ai.StreamText(ctx, openai.Chat("gpt-4o"),
+stream, err := ai.StreamText(ctx, openai.Chat("gpt-5.4"),
 	ai.WithPrompt("Tell me a story"),
 )
 if err != nil {
@@ -68,7 +68,7 @@ type Recipe struct {
 	Steps       []string `json:"steps"`
 }
 
-result, err := ai.GenerateObject[Recipe](ctx, openai.Chat("gpt-4o"),
+result, err := ai.GenerateObject[Recipe](ctx, openai.Chat("gpt-5.4"),
 	ai.WithPrompt("A recipe for pasta carbonara"),
 )
 if err != nil {
@@ -94,7 +94,7 @@ weatherTool := ai.Tool{
 	},
 }
 
-result, err := ai.GenerateText(ctx, openai.Chat("gpt-4o"),
+result, err := ai.GenerateText(ctx, openai.Chat("gpt-5.4"),
 	ai.WithPrompt("What's the weather in Paris?"),
 	ai.WithTools(weatherTool),
 	ai.WithMaxSteps(3),
@@ -118,7 +118,7 @@ Swap providers without changing your application code.
 
 ```go
 // OpenAI
-model := openai.Chat("gpt-4o")
+model := openai.Chat("gpt-5.4")
 
 // OpenRouter (access 200+ models)
 model := openrouter.Chat("anthropic/claude-sonnet-4-20250514")
@@ -131,16 +131,16 @@ model := openai.Chat("my-model", openai.WithBaseURL("https://my-api.example.com/
 
 ```go
 // Explicit API key
-openai.Chat("gpt-4o", openai.WithAPIKey("sk-..."))
+openai.Chat("gpt-5.4", openai.WithAPIKey("sk-..."))
 
 // Custom HTTP client
-openai.Chat("gpt-4o", openai.WithHTTPClient(myClient))
+openai.Chat("gpt-5.4", openai.WithHTTPClient(myClient))
 
 // OpenAI organization
-openai.Chat("gpt-4o", openai.WithOrganization("org-..."))
+openai.Chat("gpt-5.4", openai.WithOrganization("org-..."))
 
 // OpenRouter headers
-openrouter.Chat("openai/gpt-4o",
+openrouter.Chat("openai/gpt-5.4",
 	openrouter.WithHTTPReferer("https://myapp.com"),
 	openrouter.WithSiteURL("My App"),
 )

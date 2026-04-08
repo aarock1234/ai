@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/aarock1234/ai/pkg/apierror"
+	"github.com/aarock1234/ai/internal/apierror"
 )
 
 // ClientConfig holds the settings for making requests to an
@@ -39,7 +39,7 @@ func (c *ClientConfig) httpClient() *http.Client {
 
 // DoRequest sends a non-streaming chat completion request and returns
 // the decoded response.
-func DoRequest(ctx context.Context, cfg *ClientConfig, req *chatRequest) (*chatResponse, error) {
+func DoRequest(ctx context.Context, cfg *ClientConfig, req *ChatRequest) (*ChatResponse, error) {
 	req.Stream = false
 
 	body, err := json.Marshal(req)
@@ -69,7 +69,7 @@ func DoRequest(ctx context.Context, cfg *ClientConfig, req *chatRequest) (*chatR
 		return nil, apierror.New(resp.StatusCode, string(respBody))
 	}
 
-	var result chatResponse
+	var result ChatResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
@@ -80,7 +80,7 @@ func DoRequest(ctx context.Context, cfg *ClientConfig, req *chatRequest) (*chatR
 // DoStreamRequest sends a streaming chat completion request and
 // returns the response body for the caller to consume via DecodeStream.
 // The caller is responsible for closing the returned ReadCloser.
-func DoStreamRequest(ctx context.Context, cfg *ClientConfig, req *chatRequest) (io.ReadCloser, error) {
+func DoStreamRequest(ctx context.Context, cfg *ClientConfig, req *ChatRequest) (io.ReadCloser, error) {
 	req.Stream = true
 	req.StreamOptions = &streamOptions{IncludeUsage: true}
 

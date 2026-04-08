@@ -22,7 +22,7 @@ type ChatModel struct {
 // Provider returns "openrouter".
 func (m *ChatModel) Provider() string { return "openrouter" }
 
-// ModelID returns the model identifier (e.g. "openai/gpt-4o").
+// ModelID returns the model identifier (e.g. "openai/gpt-5.4").
 func (m *ChatModel) ModelID() string { return m.modelID }
 
 // DoGenerate sends a non-streaming chat completion request and returns

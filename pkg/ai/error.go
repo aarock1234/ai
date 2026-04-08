@@ -3,7 +3,7 @@ package ai
 import (
 	"errors"
 
-	"github.com/aarock1234/ai/pkg/apierror"
+	"github.com/aarock1234/ai/internal/apierror"
 )
 
 // Sentinel errors for expected conditions.

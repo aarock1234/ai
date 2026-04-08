@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aarock1234/ai/pkg/schema"
+	"github.com/aarock1234/ai/internal/schema"
 )
 
 type flatStruct struct {

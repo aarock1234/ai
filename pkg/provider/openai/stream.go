@@ -5,8 +5,8 @@ import (
 	"io"
 	"iter"
 
+	"github.com/aarock1234/ai/internal/sse"
 	"github.com/aarock1234/ai/pkg/model"
-	"github.com/aarock1234/ai/pkg/provider/sse"
 )
 
 // DecodeStream parses an SSE stream of OpenAI chat completion chunks

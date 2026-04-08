@@ -12,8 +12,8 @@ type stubProvider struct {
 	name string
 }
 
-func (p *stubProvider) Chat(modelID string) model.Model               { return nil }
-func (p *stubProvider) Embedding(modelID string) model.EmbeddingModel { return nil }
+func (p *stubProvider) Chat(_ string) model.Model               { return nil }
+func (p *stubProvider) Embedding(_ string) model.EmbeddingModel { return nil }
 
 func TestRegistryRegisterAndGet(t *testing.T) {
 	r := provider.NewRegistry()

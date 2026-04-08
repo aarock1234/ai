@@ -17,7 +17,7 @@ type Model interface {
 	// Provider returns the provider name (e.g. "openai", "openrouter").
 	Provider() string
 
-	// ModelID returns the model identifier (e.g. "gpt-4o", "claude-sonnet-4-20250514").
+	// ModelID returns the model identifier (e.g. "gpt-5.4", "claude-sonnet-4-20250514").
 	ModelID() string
 
 	// DoGenerate performs a non-streaming generation request and returns

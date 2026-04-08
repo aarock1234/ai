@@ -21,8 +21,8 @@ func TestChatModelDoGenerate(t *testing.T) {
 			t.Fatalf("unmarshal: %v", err)
 		}
 
-		if req["model"] != "gpt-4o" {
-			t.Errorf("model = %v, want gpt-4o", req["model"])
+		if req["model"] != "gpt-5.4" {
+			t.Errorf("model = %v, want gpt-5.4", req["model"])
 		}
 
 		resp := `{
@@ -39,7 +39,7 @@ func TestChatModelDoGenerate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := openai.Chat("gpt-4o",
+	m := openai.Chat("gpt-5.4",
 		openai.WithAPIKey("test-key"),
 		openai.WithBaseURL(server.URL),
 	)
@@ -48,8 +48,8 @@ func TestChatModelDoGenerate(t *testing.T) {
 		t.Errorf("Provider() = %q, want openai", m.Provider())
 	}
 
-	if m.ModelID() != "gpt-4o" {
-		t.Errorf("ModelID() = %q, want gpt-4o", m.ModelID())
+	if m.ModelID() != "gpt-5.4" {
+		t.Errorf("ModelID() = %q, want gpt-5.4", m.ModelID())
 	}
 
 	resp, err := m.DoGenerate(context.Background(), &model.Request{
@@ -105,7 +105,7 @@ func TestChatModelDoStream(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := openai.Chat("gpt-4o",
+	m := openai.Chat("gpt-5.4",
 		openai.WithAPIKey("test-key"),
 		openai.WithBaseURL(server.URL),
 	)
@@ -206,7 +206,7 @@ func TestProviderFactoryChat(t *testing.T) {
 		openai.WithBaseURL(server.URL),
 	)
 
-	m := p.Chat("gpt-4o")
+	m := p.Chat("gpt-5.4")
 
 	if m.Provider() != "openai" {
 		t.Errorf("Provider() = %q, want openai", m.Provider())
@@ -258,7 +258,7 @@ func TestProviderFactoryEmbedding(t *testing.T) {
 func TestProviderImplementsInterface(t *testing.T) {
 	var p provider.Provider = openai.New(openai.WithAPIKey("test"))
 
-	m := p.Chat("gpt-4o")
+	m := p.Chat("gpt-5.4")
 	if m == nil {
 		t.Fatal("Chat returned nil")
 	}
@@ -281,7 +281,7 @@ func TestOrganizationHeader(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := openai.Chat("gpt-4o",
+	m := openai.Chat("gpt-5.4",
 		openai.WithAPIKey("test-key"),
 		openai.WithBaseURL(server.URL),
 		openai.WithOrganization("org-123"),

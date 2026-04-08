@@ -31,7 +31,7 @@ func TestOpenAIGenerateText(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m := openai.Chat("gpt-4o-mini")
+	m := openai.Chat("gpt-5.4-mini")
 
 	result, err := ai.GenerateText(ctx, m,
 		ai.WithPrompt("Say 'hello' and nothing else."),
@@ -58,7 +58,7 @@ func TestOpenAIStreamText(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m := openai.Chat("gpt-4o-mini")
+	m := openai.Chat("gpt-5.4-mini")
 
 	stream, err := ai.StreamText(ctx, m,
 		ai.WithPrompt("Count from 1 to 5."),
@@ -97,7 +97,7 @@ func TestOpenAIGenerateObject(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m := openai.Chat("gpt-4o-mini")
+	m := openai.Chat("gpt-5.4-mini")
 
 	result, err := ai.GenerateObject[Color](ctx, m,
 		ai.WithPrompt("Give me the color red."),
@@ -139,7 +139,7 @@ func TestOpenRouterGenerateText(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	m := openrouter.Chat("openai/gpt-4o-mini")
+	m := openrouter.Chat("openai/gpt-5.4-mini")
 
 	result, err := ai.GenerateText(ctx, m,
 		ai.WithPrompt("Say 'hello' and nothing else."),
