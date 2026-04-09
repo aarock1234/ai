@@ -82,7 +82,7 @@ func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResu
 		return nil, err
 	}
 
-	return newStreamResult(streamResp.Stream, cancel), nil
+	return newStreamResult(streamResp.Stream, streamResp.Metadata, cancel), nil
 }
 
 // resolveConfig applies options to a config with sensible defaults.
@@ -123,12 +123,13 @@ func buildRequest(cfg *config) *model.Request {
 	}
 
 	req := &model.Request{
-		Messages:       messages,
-		Temperature:    cfg.temperature,
-		MaxTokens:      cfg.maxTokens,
-		TopP:           cfg.topP,
-		StopSequences:  cfg.stopSequences,
-		ResponseFormat: cfg.responseFormat,
+		Messages:        messages,
+		Temperature:     cfg.temperature,
+		MaxTokens:       cfg.maxTokens,
+		TopP:            cfg.topP,
+		StopSequences:   cfg.stopSequences,
+		ResponseFormat:  cfg.responseFormat,
+		ProviderOptions: cfg.providerOpts.Clone(),
 	}
 
 	// Attach tool definitions.
@@ -228,6 +229,7 @@ func extractStep(resp *model.Response) Step {
 		ToolCalls:    toolCalls,
 		FinishReason: resp.FinishReason,
 		Usage:        resp.Usage,
+		Metadata:     resp.Metadata.Clone(),
 	}
 }
 
@@ -340,5 +342,6 @@ func buildResult(steps []Step, totalUsage Usage) *GenerateResult {
 		FinishReason: last.FinishReason,
 		Usage:        totalUsage,
 		Steps:        steps,
+		Metadata:     last.Metadata.Clone(),
 	}
 }

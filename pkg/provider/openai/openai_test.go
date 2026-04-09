@@ -32,7 +32,8 @@ func TestChatModelDoGenerate(t *testing.T) {
 				"message": {"role": "assistant", "content": "Hello!"},
 				"finish_reason": "stop"
 			}],
-			"usage": {"prompt_tokens": 5, "completion_tokens": 3}
+			"usage": {"prompt_tokens": 5, "completion_tokens": 3},
+			"metadata": {"trace_id": "trace-openai"}
 		}`
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(resp))
@@ -59,6 +60,11 @@ func TestChatModelDoGenerate(t *testing.T) {
 				Parts: []model.Part{model.TextPart{Text: "Hi"}},
 			},
 		},
+		ProviderOptions: model.ProviderOptions{
+			"openai": {
+				"metadata": json.RawMessage(`{"trace_id":"trace-openai"}`),
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("DoGenerate: %v", err)
@@ -80,6 +86,14 @@ func TestChatModelDoGenerate(t *testing.T) {
 	if resp.FinishReason != model.FinishReasonStop {
 		t.Errorf("finish reason = %v, want stop", resp.FinishReason)
 	}
+
+	if resp.Metadata.RequestID != "chatcmpl-test" {
+		t.Errorf("Metadata.RequestID = %q, want chatcmpl-test", resp.Metadata.RequestID)
+	}
+
+	if resp.Metadata.Provider["trace_id"] != "trace-openai" {
+		t.Errorf("Metadata.Provider[trace_id] = %q, want trace-openai", resp.Metadata.Provider["trace_id"])
+	}
 }
 
 func TestChatModelDoStream(t *testing.T) {
@@ -88,7 +102,7 @@ func TestChatModelDoStream(t *testing.T) {
 		flusher, _ := w.(http.Flusher)
 
 		lines := []string{
-			`data: {"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}`,
+			`data: {"id":"1","model":"gpt-5.4","metadata":{"trace_id":"trace-stream"},"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}`,
 			``,
 			`data: {"id":"1","choices":[{"index":0,"delta":{"content":" there"}}]}`,
 			``,
@@ -123,14 +137,26 @@ func TestChatModelDoStream(t *testing.T) {
 	}
 
 	var text string
+	var metadata model.ProviderMetadata
 	for chunk := range streamResp.Stream {
-		if td, ok := chunk.(model.TextDelta); ok {
-			text += td.Text
+		switch c := chunk.(type) {
+		case model.TextDelta:
+			text += c.Text
+		case model.ProviderMetadataChunk:
+			metadata = c.Metadata
 		}
 	}
 
 	if text != "Hi there" {
 		t.Errorf("streamed text = %q, want %q", text, "Hi there")
+	}
+
+	if metadata.RequestID != "1" {
+		t.Errorf("stream metadata RequestID = %q, want 1", metadata.RequestID)
+	}
+
+	if metadata.ModelID != "gpt-5.4" {
+		t.Errorf("stream metadata ModelID = %q, want gpt-5.4", metadata.ModelID)
 	}
 }
 

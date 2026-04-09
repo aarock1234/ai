@@ -1,5 +1,13 @@
 package model
 
+// ProviderMetadataChunk carries provider/model streaming metadata that
+// becomes available mid-stream.
+type ProviderMetadataChunk struct {
+	Metadata ProviderMetadata
+}
+
+func (ProviderMetadataChunk) chunkType() {}
+
 // Chunk is the interface for streaming response segments. Each chunk
 // carries a delta of the response as it arrives from the provider.
 type Chunk interface {

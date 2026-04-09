@@ -37,6 +37,14 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*MessageReq
 		Stream:        stream,
 	}
 
+	metadata, err := convertProviderMetadata(req.ProviderOptions)
+	if err != nil {
+		return nil, err
+	}
+	if len(metadata) > 0 {
+		msgReq.Metadata = metadata
+	}
+
 	if len(req.Tools) > 0 {
 		msgReq.Tools = convertTools(req.Tools)
 	}
@@ -61,6 +69,7 @@ func DecodeResponse(resp *MessageResponse) *model.Response {
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
 		},
+		Metadata: responseMetadata(resp),
 	}
 
 	for _, block := range resp.Content {
@@ -80,6 +89,43 @@ func DecodeResponse(resp *MessageResponse) *model.Response {
 	}
 
 	return result
+}
+
+func convertProviderMetadata(opts model.ProviderOptions) (map[string]string, error) {
+	raw, ok := opts.Lookup("anthropic", "metadata")
+	if !ok {
+		return nil, nil
+	}
+
+	var metadata map[string]string
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil, fmt.Errorf("anthropic metadata option must be an object of string values: %w", err)
+	}
+
+	return metadata, nil
+}
+
+func responseMetadata(resp *MessageResponse) model.ProviderMetadata {
+	metadata := model.ProviderMetadata{
+		RequestID: resp.ID,
+		ModelID:   resp.Model,
+	}
+
+	provider := make(map[string]string)
+	if resp.StopReason != "" {
+		provider["stop_reason"] = resp.StopReason
+	}
+	if resp.StopSequence != nil && *resp.StopSequence != "" {
+		provider["stop_sequence"] = *resp.StopSequence
+	}
+	for key, value := range resp.Metadata {
+		provider[key] = value
+	}
+	if len(provider) > 0 {
+		metadata.Provider = provider
+	}
+
+	return metadata
 }
 
 func convertMessages(msgs []model.Message) (string, []message, error) {

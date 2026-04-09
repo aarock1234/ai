@@ -34,6 +34,10 @@ func DecodeStream(r io.Reader) iter.Seq[model.Chunk] {
 					continue
 				}
 
+				if !yield(model.ProviderMetadataChunk{Metadata: responseMetadata(&msgStart.Message)}) {
+					return
+				}
+
 				if msgStart.Message.Usage.InputTokens != 0 || msgStart.Message.Usage.OutputTokens != 0 {
 					if !yield(model.UsageChunk{Usage: toUsage(msgStart.Message.Usage)}) {
 						return

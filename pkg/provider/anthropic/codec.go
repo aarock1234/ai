@@ -4,16 +4,17 @@ import "encoding/json"
 
 // MessageRequest is the Anthropic Messages API request body.
 type MessageRequest struct {
-	Model         string           `json:"model"`
-	System        string           `json:"system,omitempty"`
-	Messages      []message        `json:"messages"`
-	MaxTokens     int              `json:"max_tokens"`
-	Temperature   *float64         `json:"temperature,omitempty"`
-	TopP          *float64         `json:"top_p,omitempty"`
-	StopSequences []string         `json:"stop_sequences,omitempty"`
-	Tools         []toolDefinition `json:"tools,omitempty"`
-	ToolChoice    *toolChoice      `json:"tool_choice,omitempty"`
-	Stream        bool             `json:"stream,omitempty"`
+	Model         string            `json:"model"`
+	System        string            `json:"system,omitempty"`
+	Messages      []message         `json:"messages"`
+	MaxTokens     int               `json:"max_tokens"`
+	Temperature   *float64          `json:"temperature,omitempty"`
+	TopP          *float64          `json:"top_p,omitempty"`
+	StopSequences []string          `json:"stop_sequences,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	Tools         []toolDefinition  `json:"tools,omitempty"`
+	ToolChoice    *toolChoice       `json:"tool_choice,omitempty"`
+	Stream        bool              `json:"stream,omitempty"`
 }
 
 type message struct {
@@ -54,14 +55,15 @@ type toolChoice struct {
 
 // MessageResponse is the Anthropic Messages API response body.
 type MessageResponse struct {
-	ID           string         `json:"id"`
-	Type         string         `json:"type"`
-	Role         string         `json:"role"`
-	Content      []contentBlock `json:"content"`
-	Model        string         `json:"model"`
-	StopReason   string         `json:"stop_reason"`
-	StopSequence *string        `json:"stop_sequence,omitempty"`
-	Usage        wireUsage      `json:"usage"`
+	ID           string            `json:"id"`
+	Type         string            `json:"type"`
+	Role         string            `json:"role"`
+	Content      []contentBlock    `json:"content"`
+	Model        string            `json:"model"`
+	StopReason   string            `json:"stop_reason"`
+	StopSequence *string           `json:"stop_sequence,omitempty"`
+	Usage        wireUsage         `json:"usage"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 type wireUsage struct {

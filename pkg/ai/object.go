@@ -47,7 +47,8 @@ func GenerateObject[T any](ctx context.Context, m model.Model, opts ...Option) (
 	}
 
 	return &ObjectResult[T]{
-		Object: obj,
-		Usage:  result.Usage,
+		Object:   obj,
+		Usage:    result.Usage,
+		Metadata: result.Metadata,
 	}, nil
 }

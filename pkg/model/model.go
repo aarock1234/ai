@@ -36,4 +36,8 @@ type StreamResponse struct {
 	// must range over this to consume the response. Breaking out of the
 	// range early is safe and signals the provider to stop.
 	Stream iter.Seq[Chunk]
+
+	// Metadata carries provider/model response metadata known at stream
+	// creation time.
+	Metadata ProviderMetadata
 }

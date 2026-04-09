@@ -52,11 +52,20 @@ func TestGenerateTextBasic(t *testing.T) {
 				Content:      []model.Content{model.TextContent{Text: "Hello back!"}},
 				FinishReason: model.FinishReasonStop,
 				Usage:        model.Usage{InputTokens: 5, OutputTokens: 3},
+				Metadata: model.ProviderMetadata{
+					RequestID: "req_basic",
+					Provider: map[string]string{
+						"trace_id": "trace-basic",
+					},
+				},
 			}, nil
 		},
 	}
 
-	result, err := ai.GenerateText(context.Background(), mock, ai.WithPrompt("Hi"))
+	result, err := ai.GenerateText(context.Background(), mock,
+		ai.WithPrompt("Hi"),
+		ai.WithProviderOption("mock", "metadata", map[string]string{"trace_id": "trace-basic"}),
+	)
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
@@ -75,6 +84,50 @@ func TestGenerateTextBasic(t *testing.T) {
 
 	if result.Usage.OutputTokens != 3 {
 		t.Errorf("OutputTokens = %d, want 3", result.Usage.OutputTokens)
+	}
+
+	if result.Metadata.RequestID != "req_basic" {
+		t.Errorf("Metadata.RequestID = %q, want req_basic", result.Metadata.RequestID)
+	}
+
+	if result.Metadata.Provider["trace_id"] != "trace-basic" {
+		t.Errorf("Metadata.Provider[trace_id] = %q, want trace-basic", result.Metadata.Provider["trace_id"])
+	}
+}
+
+func TestGenerateTextWithProviderOption(t *testing.T) {
+	mock := &mockModel{
+		generateFn: func(_ context.Context, req *model.Request) (*model.Response, error) {
+			raw, ok := req.ProviderOptions.Lookup("anthropic", "metadata")
+			if !ok {
+				t.Fatal("provider option metadata not found")
+			}
+
+			if string(raw) != `{"trace_id":"trace-123"}` {
+				t.Errorf("provider option metadata = %s, want trace JSON", raw)
+			}
+
+			return &model.Response{
+				Content:      []model.Content{model.TextContent{Text: "ok"}},
+				FinishReason: model.FinishReasonStop,
+				Metadata: model.ProviderMetadata{
+					RequestID: "req_1",
+					ModelID:   "claude-test",
+				},
+			}, nil
+		},
+	}
+
+	result, err := ai.GenerateText(context.Background(), mock,
+		ai.WithPrompt("Hi"),
+		ai.WithProviderOption("anthropic", "metadata", map[string]string{"trace_id": "trace-123"}),
+	)
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+
+	if result.Metadata.RequestID != "req_1" {
+		t.Errorf("Metadata.RequestID = %q, want req_1", result.Metadata.RequestID)
 	}
 }
 
@@ -298,6 +351,15 @@ func TestStreamTextBasic(t *testing.T) {
 	mock := &mockModel{
 		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
 			stream := func(yield func(model.Chunk) bool) {
+				if !yield(model.ProviderMetadataChunk{Metadata: model.ProviderMetadata{
+					RequestID: "req_stream",
+					ModelID:   "mock-model-stream",
+					Provider: map[string]string{
+						"trace_id": "trace-stream",
+					},
+				}}) {
+					return
+				}
 				if !yield(model.TextDelta{Text: "Hello"}) {
 					return
 				}
@@ -310,7 +372,15 @@ func TestStreamTextBasic(t *testing.T) {
 				yield(model.UsageChunk{Usage: model.Usage{InputTokens: 5, OutputTokens: 2}})
 			}
 
-			return &model.StreamResponse{Stream: stream}, nil
+			return &model.StreamResponse{
+				Stream: stream,
+				Metadata: model.ProviderMetadata{
+					ModelID: "mock-model-initial",
+					Provider: map[string]string{
+						"trace_id": "trace-initial",
+					},
+				},
+			}, nil
 		},
 	}
 
@@ -344,6 +414,22 @@ func TestStreamTextBasic(t *testing.T) {
 	if result.Usage.InputTokens != 5 {
 		t.Errorf("InputTokens = %d, want 5", result.Usage.InputTokens)
 	}
+
+	if result.Metadata.RequestID != "req_stream" {
+		t.Errorf("Metadata.RequestID = %q, want req_stream", result.Metadata.RequestID)
+	}
+
+	if result.Metadata.Provider["trace_id"] != "trace-stream" {
+		t.Errorf("Metadata.Provider[trace_id] = %q, want trace-stream", result.Metadata.Provider["trace_id"])
+	}
+
+	if streamResult.Metadata().RequestID != "req_stream" {
+		t.Errorf("stream metadata RequestID = %q, want req_stream", streamResult.Metadata().RequestID)
+	}
+
+	if streamResult.Metadata().Provider["trace_id"] != "trace-stream" {
+		t.Errorf("stream metadata trace_id = %q, want trace-stream", streamResult.Metadata().Provider["trace_id"])
+	}
 }
 
 func TestStreamTextResultConsumesFull(t *testing.T) {
@@ -356,7 +442,10 @@ func TestStreamTextResultConsumesFull(t *testing.T) {
 				yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
 			}
 
-			return &model.StreamResponse{Stream: stream}, nil
+			return &model.StreamResponse{
+				Stream:   stream,
+				Metadata: model.ProviderMetadata{RequestID: "req_auto"},
+			}, nil
 		},
 	}
 
@@ -375,6 +464,10 @@ func TestStreamTextResultConsumesFull(t *testing.T) {
 	if result.Text != "auto" {
 		t.Errorf("result.Text = %q, want %q", result.Text, "auto")
 	}
+
+	if result.Metadata.RequestID != "req_auto" {
+		t.Errorf("Metadata.RequestID = %q, want req_auto", result.Metadata.RequestID)
+	}
 }
 
 func TestStreamTextChunks(t *testing.T) {
@@ -387,7 +480,10 @@ func TestStreamTextChunks(t *testing.T) {
 				yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
 			}
 
-			return &model.StreamResponse{Stream: stream}, nil
+			return &model.StreamResponse{
+				Stream:   stream,
+				Metadata: model.ProviderMetadata{RequestID: "req_chunk"},
+			}, nil
 		},
 	}
 
@@ -442,6 +538,12 @@ func TestGenerateObjectBasic(t *testing.T) {
 				},
 				FinishReason: model.FinishReasonStop,
 				Usage:        model.Usage{InputTokens: 10, OutputTokens: 20},
+				Metadata: model.ProviderMetadata{
+					RequestID: "req_object",
+					Provider: map[string]string{
+						"schema_mode": "strict",
+					},
+				},
 			}, nil
 		},
 	}
@@ -463,6 +565,14 @@ func TestGenerateObjectBasic(t *testing.T) {
 
 	if result.Usage.InputTokens != 10 {
 		t.Errorf("InputTokens = %d, want 10", result.Usage.InputTokens)
+	}
+
+	if result.Metadata.RequestID != "req_object" {
+		t.Errorf("Metadata.RequestID = %q, want req_object", result.Metadata.RequestID)
+	}
+
+	if result.Metadata.Provider["schema_mode"] != "strict" {
+		t.Errorf("Metadata.Provider[schema_mode] = %q, want strict", result.Metadata.Provider["schema_mode"])
 	}
 }
 

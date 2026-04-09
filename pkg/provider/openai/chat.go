@@ -67,5 +67,8 @@ func (m *ChatModel) DoStream(ctx context.Context, req *model.Request) (*model.St
 		}
 	}
 
-	return &model.StreamResponse{Stream: wrapped}, nil
+	return &model.StreamResponse{
+		Stream:   wrapped,
+		Metadata: model.ProviderMetadata{ModelID: m.modelID},
+	}, nil
 }

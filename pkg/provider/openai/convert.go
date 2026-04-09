@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/aarock1234/ai/pkg/model"
 )
@@ -19,6 +20,14 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*ChatReques
 		TopP:        req.TopP,
 		Stop:        req.StopSequences,
 		Stream:      stream,
+	}
+
+	metadata, err := convertProviderMetadata(req.ProviderOptions)
+	if err != nil {
+		return nil, err
+	}
+	if len(metadata) > 0 {
+		cr.Metadata = metadata
 	}
 
 	if stream {
@@ -50,6 +59,7 @@ func DecodeResponse(resp *ChatResponse) *model.Response {
 				InputTokens:  resp.Usage.PromptTokens,
 				OutputTokens: resp.Usage.CompletionTokens,
 			},
+			Metadata: responseMetadata(resp),
 		}
 	}
 
@@ -77,7 +87,38 @@ func DecodeResponse(resp *ChatResponse) *model.Response {
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
 		},
+		Metadata: responseMetadata(resp),
 	}
+}
+
+func convertProviderMetadata(opts model.ProviderOptions) (map[string]string, error) {
+	raw, ok := opts.Lookup("openai", "metadata")
+	if !ok {
+		return nil, nil
+	}
+
+	var metadata map[string]string
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil, fmt.Errorf("openai metadata option must be an object of string values: %w", err)
+	}
+
+	return metadata, nil
+}
+
+func responseMetadata(resp *ChatResponse) model.ProviderMetadata {
+	metadata := model.ProviderMetadata{
+		RequestID: resp.ID,
+		ModelID:   resp.Model,
+	}
+
+	if len(resp.Metadata) > 0 {
+		metadata.Provider = make(map[string]string, len(resp.Metadata))
+		for key, value := range resp.Metadata {
+			metadata.Provider[key] = value
+		}
+	}
+
+	return metadata
 }
 
 // convertMessages translates model messages into the OpenAI wire format.

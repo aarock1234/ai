@@ -14,15 +14,48 @@ import (
 // the returned iterator to consume the stream.
 func DecodeStream(r io.Reader) iter.Seq[model.Chunk] {
 	return func(yield func(model.Chunk) bool) {
+		var metadata model.ProviderMetadata
+
 		for event := range sse.Read(r) {
 			if event.Data == "" {
 				continue
+			}
+
+			if event.Data == "[DONE]" {
+				return
 			}
 
 			var chunk chatStreamChunk
 			if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 				// Skip malformed chunks rather than halting the stream.
 				continue
+			}
+
+			metadataChanged := false
+			if chunk.ID != "" && metadata.RequestID != chunk.ID {
+				metadata.RequestID = chunk.ID
+				metadataChanged = true
+			}
+			if chunk.Model != "" && metadata.ModelID != chunk.Model {
+				metadata.ModelID = chunk.Model
+				metadataChanged = true
+			}
+			if len(chunk.Metadata) > 0 {
+				if metadata.Provider == nil {
+					metadata.Provider = make(map[string]string, len(chunk.Metadata))
+				}
+				for key, value := range chunk.Metadata {
+					if metadata.Provider[key] == value {
+						continue
+					}
+					metadata.Provider[key] = value
+					metadataChanged = true
+				}
+			}
+			if metadataChanged {
+				if !yield(model.ProviderMetadataChunk{Metadata: metadata.Clone()}) {
+					return
+				}
 			}
 
 			// Yield usage if present (typically the final chunk).

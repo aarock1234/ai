@@ -2,6 +2,70 @@ package model
 
 import "encoding/json"
 
+// ProviderOptions carries provider-scoped request options. The first key
+// is the provider name (e.g. "anthropic", "openai"); the nested option
+// set contains provider-defined JSON values for that request.
+type ProviderOptions map[string]ProviderOptionSet
+
+// Clone returns a deep copy of the provider options.
+func (o ProviderOptions) Clone() ProviderOptions {
+	if len(o) == 0 {
+		return nil
+	}
+
+	cloned := make(ProviderOptions, len(o))
+	for provider, opts := range o {
+		cloned[provider] = opts.Clone()
+	}
+
+	return cloned
+}
+
+// Lookup returns the raw JSON value for a provider-specific request option.
+func (o ProviderOptions) Lookup(provider, key string) (json.RawMessage, bool) {
+	if len(o) == 0 {
+		return nil, false
+	}
+
+	opts, ok := o[provider]
+	if !ok {
+		return nil, false
+	}
+
+	return opts.Lookup(key)
+}
+
+// ProviderOptionSet is a single provider's request option map.
+type ProviderOptionSet map[string]json.RawMessage
+
+// Clone returns a deep copy of the option set.
+func (s ProviderOptionSet) Clone() ProviderOptionSet {
+	if len(s) == 0 {
+		return nil
+	}
+
+	cloned := make(ProviderOptionSet, len(s))
+	for key, value := range s {
+		cloned[key] = append(json.RawMessage(nil), value...)
+	}
+
+	return cloned
+}
+
+// Lookup returns a copied raw JSON value for a provider-specific option.
+func (s ProviderOptionSet) Lookup(key string) (json.RawMessage, bool) {
+	if len(s) == 0 {
+		return nil, false
+	}
+
+	value, ok := s[key]
+	if !ok {
+		return nil, false
+	}
+
+	return append(json.RawMessage(nil), value...), true
+}
+
 // Request is the normalized request shape that the SDK builds and passes
 // to Model.DoGenerate and Model.DoStream. Providers translate this into
 // their wire format.
@@ -30,6 +94,10 @@ type Request struct {
 
 	// ResponseFormat requests a specific output format from the model.
 	ResponseFormat *ResponseFormat
+
+	// ProviderOptions carries provider-specific request options keyed by
+	// provider name.
+	ProviderOptions ProviderOptions
 }
 
 // Message is a single message in the conversation. The Parts field

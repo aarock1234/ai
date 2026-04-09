@@ -28,6 +28,10 @@ type GenerateResult struct {
 	// Usage tracks total token consumption across all steps.
 	Usage Usage
 
+	// Metadata carries provider/model response metadata for the final
+	// generation step.
+	Metadata model.ProviderMetadata
+
 	// Steps contains the individual generation steps when using the
 	// tool loop (WithMaxSteps > 1).
 	Steps []Step
@@ -40,6 +44,7 @@ type Step struct {
 	ToolResults  []ToolResult
 	FinishReason model.FinishReason
 	Usage        Usage
+	Metadata     model.ProviderMetadata
 }
 
 // StreamResult wraps a streaming response and provides iterators for
@@ -47,8 +52,9 @@ type Step struct {
 // Result() can return the final GenerateResult after the stream is
 // fully consumed.
 type StreamResult struct {
-	stream iter.Seq[model.Chunk]
-	cancel context.CancelFunc
+	stream   iter.Seq[model.Chunk]
+	cancel   context.CancelFunc
+	metadata model.ProviderMetadata
 
 	mu       sync.Mutex
 	consumed bool
@@ -58,10 +64,11 @@ type StreamResult struct {
 
 // newStreamResult creates a StreamResult from a model chunk iterator.
 // If cancel is non-nil it is called when the stream is fully consumed.
-func newStreamResult(stream iter.Seq[model.Chunk], cancel context.CancelFunc) *StreamResult {
+func newStreamResult(stream iter.Seq[model.Chunk], metadata model.ProviderMetadata, cancel context.CancelFunc) *StreamResult {
 	return &StreamResult{
-		stream: stream,
-		cancel: cancel,
+		stream:   stream,
+		cancel:   cancel,
+		metadata: metadata.Clone(),
 	}
 }
 
@@ -107,6 +114,10 @@ func (s *StreamResult) Text() iter.Seq[string] {
 				finishReason = c.FinishReason
 			case model.UsageChunk:
 				usage = c.Usage
+			case model.ProviderMetadataChunk:
+				s.mu.Lock()
+				s.metadata = c.Metadata.Clone()
+				s.mu.Unlock()
 			}
 		}
 
@@ -126,6 +137,7 @@ func (s *StreamResult) Text() iter.Seq[string] {
 			ToolCalls:    toolCalls,
 			FinishReason: finishReason,
 			Usage:        usage,
+			Metadata:     s.metadata.Clone(),
 		}
 		s.mu.Unlock()
 
@@ -147,6 +159,16 @@ func (s *StreamResult) Chunks() iter.Seq[model.Chunk] {
 			}
 		}
 	}
+}
+
+// Metadata returns the best-known provider/model metadata for the stream.
+// This includes metadata available at stream creation time and any later
+// metadata chunks observed while consuming the stream.
+func (s *StreamResult) Metadata() model.ProviderMetadata {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.metadata.Clone()
 }
 
 // Result blocks until the stream is fully consumed and returns the
@@ -179,4 +201,8 @@ type ObjectResult[T any] struct {
 
 	// Usage tracks token consumption for the request.
 	Usage Usage
+
+	// Metadata carries provider/model response metadata for the object
+	// generation request.
+	Metadata model.ProviderMetadata
 }

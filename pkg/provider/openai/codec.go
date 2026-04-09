@@ -9,17 +9,18 @@ import "encoding/json"
 
 // ChatRequest is the OpenAI chat completions request body.
 type ChatRequest struct {
-	Model          string          `json:"model"`
-	Messages       []chatMessage   `json:"messages"`
-	Temperature    *float64        `json:"temperature,omitempty"`
-	MaxTokens      *int            `json:"max_completion_tokens,omitempty"`
-	TopP           *float64        `json:"top_p,omitempty"`
-	Stop           []string        `json:"stop,omitempty"`
-	Tools          []chatTool      `json:"tools,omitempty"`
-	ToolChoice     any             `json:"tool_choice,omitempty"`
-	ResponseFormat *responseFormat `json:"response_format,omitempty"`
-	Stream         bool            `json:"stream,omitempty"`
-	StreamOptions  *streamOptions  `json:"stream_options,omitempty"`
+	Model          string            `json:"model"`
+	Messages       []chatMessage     `json:"messages"`
+	Temperature    *float64          `json:"temperature,omitempty"`
+	MaxTokens      *int              `json:"max_completion_tokens,omitempty"`
+	TopP           *float64          `json:"top_p,omitempty"`
+	Stop           []string          `json:"stop,omitempty"`
+	Tools          []chatTool        `json:"tools,omitempty"`
+	ToolChoice     any               `json:"tool_choice,omitempty"`
+	ResponseFormat *responseFormat   `json:"response_format,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	Stream         bool              `json:"stream,omitempty"`
+	StreamOptions  *streamOptions    `json:"stream_options,omitempty"`
 }
 
 type streamOptions struct {
@@ -76,10 +77,11 @@ type jsonSchemaSpec struct {
 
 // ChatResponse is the OpenAI chat completions response.
 type ChatResponse struct {
-	ID      string       `json:"id"`
-	Choices []chatChoice `json:"choices"`
-	Usage   wireUsage    `json:"usage"`
-	Model   string       `json:"model"`
+	ID       string            `json:"id"`
+	Choices  []chatChoice      `json:"choices"`
+	Usage    wireUsage         `json:"usage"`
+	Model    string            `json:"model"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // chatChoice is a single completion choice.
@@ -97,9 +99,11 @@ type wireUsage struct {
 
 // chatStreamChunk is a single chunk in a streaming response.
 type chatStreamChunk struct {
-	ID      string              `json:"id"`
-	Choices []streamChunkChoice `json:"choices"`
-	Usage   *wireUsage          `json:"usage,omitempty"`
+	ID       string              `json:"id"`
+	Choices  []streamChunkChoice `json:"choices"`
+	Usage    *wireUsage          `json:"usage,omitempty"`
+	Model    string              `json:"model,omitempty"`
+	Metadata map[string]string   `json:"metadata,omitempty"`
 }
 
 // streamChunkChoice is a single choice delta in a streaming chunk.

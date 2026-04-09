@@ -432,49 +432,62 @@ func TestDecodeStreamChunks(t *testing.T) {
 		chunks = append(chunks, chunk)
 	}
 
-	if len(chunks) != 5 {
-		t.Fatalf("chunks count = %d, want 5", len(chunks))
+	if len(chunks) != 6 {
+		t.Fatalf("chunks count = %d, want 6", len(chunks))
 	}
 
-	usageStart, ok := chunks[0].(model.UsageChunk)
+	metadata, ok := chunks[0].(model.ProviderMetadataChunk)
 	if !ok {
-		t.Fatalf("chunk[0] type = %T, want UsageChunk", chunks[0])
+		t.Fatalf("chunk[0] type = %T, want ProviderMetadataChunk", chunks[0])
+	}
+
+	if metadata.Metadata.RequestID != "msg_1" {
+		t.Errorf("request id = %q, want msg_1", metadata.Metadata.RequestID)
+	}
+
+	if metadata.Metadata.ModelID != "claude-sonnet-4-5" {
+		t.Errorf("model id = %q, want claude-sonnet-4-5", metadata.Metadata.ModelID)
+	}
+
+	usageStart, ok := chunks[1].(model.UsageChunk)
+	if !ok {
+		t.Fatalf("chunk[1] type = %T, want UsageChunk", chunks[1])
 	}
 
 	if usageStart.Usage.InputTokens != 5 {
 		t.Errorf("initial input tokens = %d, want 5", usageStart.Usage.InputTokens)
 	}
 
-	text1, ok := chunks[1].(model.TextDelta)
-	if !ok {
-		t.Fatalf("chunk[1] type = %T, want TextDelta", chunks[1])
-	}
-
-	if text1.Text != "Hello" {
-		t.Errorf("chunk[1].Text = %q, want Hello", text1.Text)
-	}
-
-	text2, ok := chunks[2].(model.TextDelta)
+	text1, ok := chunks[2].(model.TextDelta)
 	if !ok {
 		t.Fatalf("chunk[2] type = %T, want TextDelta", chunks[2])
 	}
 
-	if text2.Text != " world" {
-		t.Errorf("chunk[2].Text = %q, want ' world'", text2.Text)
+	if text1.Text != "Hello" {
+		t.Errorf("chunk[2].Text = %q, want Hello", text1.Text)
 	}
 
-	usageEnd, ok := chunks[3].(model.UsageChunk)
+	text2, ok := chunks[3].(model.TextDelta)
 	if !ok {
-		t.Fatalf("chunk[3] type = %T, want UsageChunk", chunks[3])
+		t.Fatalf("chunk[3] type = %T, want TextDelta", chunks[3])
+	}
+
+	if text2.Text != " world" {
+		t.Errorf("chunk[3].Text = %q, want ' world'", text2.Text)
+	}
+
+	usageEnd, ok := chunks[4].(model.UsageChunk)
+	if !ok {
+		t.Fatalf("chunk[4] type = %T, want UsageChunk", chunks[4])
 	}
 
 	if usageEnd.Usage.OutputTokens != 2 {
 		t.Errorf("final output tokens = %d, want 2", usageEnd.Usage.OutputTokens)
 	}
 
-	finish, ok := chunks[4].(model.FinishChunk)
+	finish, ok := chunks[5].(model.FinishChunk)
 	if !ok {
-		t.Fatalf("chunk[4] type = %T, want FinishChunk", chunks[4])
+		t.Fatalf("chunk[5] type = %T, want FinishChunk", chunks[5])
 	}
 
 	if finish.FinishReason != model.FinishReasonStop {

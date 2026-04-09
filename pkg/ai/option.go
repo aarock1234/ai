@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/aarock1234/ai/pkg/model"
@@ -22,6 +23,7 @@ type config struct {
 	stopSequences  []string
 	timeout        time.Duration
 	responseFormat *model.ResponseFormat
+	providerOpts   model.ProviderOptions
 }
 
 // WithSystem sets the system prompt.
@@ -74,6 +76,31 @@ func WithTopP(p float64) Option {
 // generating.
 func WithStopSequences(seqs ...string) Option {
 	return func(c *config) { c.stopSequences = seqs }
+}
+
+// WithProviderOption sets a provider-specific request option for a single
+// call. The value is JSON-encoded and stored under the provider name.
+func WithProviderOption(provider, key string, value any) Option {
+	return func(c *config) {
+		if provider == "" || key == "" {
+			return
+		}
+
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return
+		}
+
+		if c.providerOpts == nil {
+			c.providerOpts = make(model.ProviderOptions)
+		}
+
+		if c.providerOpts[provider] == nil {
+			c.providerOpts[provider] = make(model.ProviderOptionSet)
+		}
+
+		c.providerOpts[provider][key] = encoded
+	}
 }
 
 // WithTimeout sets an overall timeout for the request.

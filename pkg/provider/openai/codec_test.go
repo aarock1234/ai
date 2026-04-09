@@ -545,41 +545,51 @@ data: [DONE]
 		chunks = append(chunks, chunk)
 	}
 
-	// Expect: TextDelta("Hello"), TextDelta(" world"), FinishChunk(stop), UsageChunk.
-	if len(chunks) != 4 {
-		t.Fatalf("chunks count = %d, want 4, got: %v", len(chunks), chunks)
+	// Expect: ProviderMetadataChunk, TextDelta("Hello"), TextDelta(" world"),
+	// FinishChunk(stop), UsageChunk.
+	if len(chunks) != 5 {
+		t.Fatalf("chunks count = %d, want 5, got: %v", len(chunks), chunks)
 	}
 
-	td1, ok := chunks[0].(model.TextDelta)
+	mc, ok := chunks[0].(model.ProviderMetadataChunk)
 	if !ok {
-		t.Fatalf("chunk[0] type = %T, want TextDelta", chunks[0])
+		t.Fatalf("chunk[0] type = %T, want ProviderMetadataChunk", chunks[0])
 	}
 
-	if td1.Text != "Hello" {
-		t.Errorf("chunk[0] text = %q, want Hello", td1.Text)
+	if mc.Metadata.RequestID != "cmpl-1" {
+		t.Errorf("chunk[0] request id = %q, want cmpl-1", mc.Metadata.RequestID)
 	}
 
-	td2, ok := chunks[1].(model.TextDelta)
+	td1, ok := chunks[1].(model.TextDelta)
 	if !ok {
 		t.Fatalf("chunk[1] type = %T, want TextDelta", chunks[1])
 	}
 
-	if td2.Text != " world" {
-		t.Errorf("chunk[1] text = %q, want ' world'", td2.Text)
+	if td1.Text != "Hello" {
+		t.Errorf("chunk[1] text = %q, want Hello", td1.Text)
 	}
 
-	fc, ok := chunks[2].(model.FinishChunk)
+	td2, ok := chunks[2].(model.TextDelta)
 	if !ok {
-		t.Fatalf("chunk[2] type = %T, want FinishChunk", chunks[2])
+		t.Fatalf("chunk[2] type = %T, want TextDelta", chunks[2])
+	}
+
+	if td2.Text != " world" {
+		t.Errorf("chunk[2] text = %q, want ' world'", td2.Text)
+	}
+
+	fc, ok := chunks[3].(model.FinishChunk)
+	if !ok {
+		t.Fatalf("chunk[3] type = %T, want FinishChunk", chunks[3])
 	}
 
 	if fc.FinishReason != model.FinishReasonStop {
 		t.Errorf("finish reason = %v, want stop", fc.FinishReason)
 	}
 
-	uc, ok := chunks[3].(model.UsageChunk)
+	uc, ok := chunks[4].(model.UsageChunk)
 	if !ok {
-		t.Fatalf("chunk[3] type = %T, want UsageChunk", chunks[3])
+		t.Fatalf("chunk[4] type = %T, want UsageChunk", chunks[4])
 	}
 
 	if uc.Usage.InputTokens != 5 {
@@ -610,10 +620,19 @@ data: [DONE]
 		chunks = append(chunks, chunk)
 	}
 
-	// First chunk: ToolCallDelta with name
-	tcd, ok := chunks[0].(model.ToolCallDelta)
+	mc, ok := chunks[0].(model.ProviderMetadataChunk)
 	if !ok {
-		t.Fatalf("chunk[0] type = %T, want ToolCallDelta", chunks[0])
+		t.Fatalf("chunk[0] type = %T, want ProviderMetadataChunk", chunks[0])
+	}
+
+	if mc.Metadata.RequestID != "cmpl-1" {
+		t.Errorf("chunk[0] request id = %q, want cmpl-1", mc.Metadata.RequestID)
+	}
+
+	// First tool chunk: ToolCallDelta with name.
+	tcd, ok := chunks[1].(model.ToolCallDelta)
+	if !ok {
+		t.Fatalf("chunk[1] type = %T, want ToolCallDelta", chunks[1])
 	}
 
 	if tcd.ToolName != "get_weather" {
@@ -731,13 +750,17 @@ func TestDoStreamRequestMockServer(t *testing.T) {
 		chunks = append(chunks, chunk)
 	}
 
-	if len(chunks) < 1 {
-		t.Fatal("expected at least one chunk")
+	if len(chunks) < 2 {
+		t.Fatal("expected at least two chunks")
 	}
 
-	td, ok := chunks[0].(model.TextDelta)
+	if _, ok := chunks[0].(model.ProviderMetadataChunk); !ok {
+		t.Fatalf("chunk[0] type = %T, want ProviderMetadataChunk", chunks[0])
+	}
+
+	td, ok := chunks[1].(model.TextDelta)
 	if !ok {
-		t.Fatalf("chunk[0] type = %T, want TextDelta", chunks[0])
+		t.Fatalf("chunk[1] type = %T, want TextDelta", chunks[1])
 	}
 
 	if td.Text != "Hi" {

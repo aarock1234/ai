@@ -98,10 +98,82 @@ func TestChunkImplementations(t *testing.T) {
 		model.ToolCallDelta{ToolCallID: "1", ToolName: "test", ArgsJSON: "{}"},
 		model.FinishChunk{FinishReason: model.FinishReasonStop},
 		model.UsageChunk{Usage: model.Usage{InputTokens: 10, OutputTokens: 5}},
+		model.ProviderMetadataChunk{Metadata: model.ProviderMetadata{RequestID: "req_1"}},
 	}
 
-	if len(chunks) != 4 {
-		t.Errorf("expected 4 chunk types, got %d", len(chunks))
+	if len(chunks) != 5 {
+		t.Errorf("expected 5 chunk types, got %d", len(chunks))
+	}
+}
+
+func TestProviderOptionsClone(t *testing.T) {
+	original := model.ProviderOptions{
+		"anthropic": {
+			"metadata": json.RawMessage(`{"trace_id":"abc"}`),
+		},
+	}
+
+	cloned := original.Clone()
+	cloned["anthropic"]["metadata"][0] = '['
+
+	got, ok := original.Lookup("anthropic", "metadata")
+	if !ok {
+		t.Fatal("Lookup returned false")
+	}
+
+	if string(got) != `{"trace_id":"abc"}` {
+		t.Errorf("original metadata = %s, want unchanged", got)
+	}
+}
+
+func TestProviderMetadataClone(t *testing.T) {
+	original := model.ProviderMetadata{
+		RequestID: "req_1",
+		ModelID:   "model_1",
+		Provider: map[string]string{
+			"stop_reason": "end_turn",
+		},
+	}
+
+	cloned := original.Clone()
+	cloned.Provider["stop_reason"] = "max_tokens"
+
+	if original.Provider["stop_reason"] != "end_turn" {
+		t.Errorf("original provider metadata mutated = %q, want end_turn", original.Provider["stop_reason"])
+	}
+}
+
+func TestProviderOptionsLookupReturnsCopy(t *testing.T) {
+	original := model.ProviderOptions{
+		"openai": {
+			"metadata": json.RawMessage(`{"trace_id":"trace-1"}`),
+		},
+	}
+
+	got, ok := original.Lookup("openai", "metadata")
+	if !ok {
+		t.Fatal("Lookup returned false")
+	}
+
+	got[0] = '['
+
+	again, ok := original.Lookup("openai", "metadata")
+	if !ok {
+		t.Fatal("Lookup returned false on second read")
+	}
+
+	if string(again) != `{"trace_id":"trace-1"}` {
+		t.Errorf("Lookup mutated original value = %s, want unchanged", again)
+	}
+}
+
+func TestProviderMetadataChunkImplementation(t *testing.T) {
+	chunks := []model.Chunk{
+		model.ProviderMetadataChunk{Metadata: model.ProviderMetadata{RequestID: "req_2"}},
+	}
+
+	if len(chunks) != 1 {
+		t.Errorf("expected 1 chunk type, got %d", len(chunks))
 	}
 }
 
