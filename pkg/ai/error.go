@@ -15,6 +15,9 @@ var (
 	// step limit without a final response.
 	ErrMaxStepsExceeded = errors.New("max steps exceeded")
 
+	// ErrInvalidMaxSteps is returned when WithMaxSteps is less than 1.
+	ErrInvalidMaxSteps = errors.New("max steps must be at least 1")
+
 	// ErrSchemaValidation is returned when structured output fails to
 	// match the expected schema.
 	ErrSchemaValidation = errors.New("schema validation failed")

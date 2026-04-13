@@ -41,14 +41,23 @@ type Response struct {
 	// Content contains the generated content segments (text, tool calls).
 	Content []Content
 
+	// Reasoning carries extracted reasoning text when available.
+	Reasoning string
+
 	// FinishReason indicates why the model stopped generating.
 	FinishReason FinishReason
+
+	// RawFinishReason is the provider-native finish reason string.
+	RawFinishReason string
 
 	// Usage tracks token consumption for this request.
 	Usage Usage
 
 	// Metadata carries provider/model response metadata when available.
 	Metadata ProviderMetadata
+
+	// Warnings carries provider warnings when available.
+	Warnings []string
 }
 
 // Content is the interface for response content segments.
@@ -94,8 +103,14 @@ const (
 
 // Usage tracks token consumption for a single request.
 type Usage struct {
-	InputTokens  int
-	OutputTokens int
+	InputTokens       int
+	OutputTokens      int
+	CachedInputTokens int
+	ReasoningTokens   int
+	ImageInputTokens  int
+	ImageOutputTokens int
+	AudioInputTokens  int
+	AudioOutputTokens int
 }
 
 // TotalTokens returns the sum of input and output tokens.

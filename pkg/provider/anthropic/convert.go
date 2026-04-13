@@ -33,6 +33,7 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*MessageReq
 		MaxTokens:     maxTokens,
 		Temperature:   req.Temperature,
 		TopP:          req.TopP,
+		TopK:          req.TopK,
 		StopSequences: req.StopSequences,
 		Stream:        stream,
 	}
@@ -57,6 +58,10 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*MessageReq
 		msgReq.ToolChoice = toolChoice
 	}
 
+	if len(req.Headers) > 0 {
+		msgReq.Headers = req.Headers.Clone()
+	}
+
 	return msgReq, nil
 }
 
@@ -64,7 +69,8 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*MessageReq
 // normalized model.Response.
 func DecodeResponse(resp *MessageResponse) *model.Response {
 	result := &model.Response{
-		FinishReason: mapFinishReason(resp.StopReason),
+		FinishReason:    mapFinishReason(resp.StopReason),
+		RawFinishReason: resp.StopReason,
 		Usage: model.Usage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
@@ -342,6 +348,7 @@ func convertTools(tools []model.ToolDefinition) []toolDefinition {
 			Name:        tool.Name,
 			Description: tool.Description,
 			InputSchema: objectJSON(tool.InputSchema),
+			Strict:      tool.Strict,
 		}
 	}
 

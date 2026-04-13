@@ -2,6 +2,7 @@ package openai_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -85,6 +86,10 @@ func TestChatModelDoGenerate(t *testing.T) {
 
 	if resp.FinishReason != model.FinishReasonStop {
 		t.Errorf("finish reason = %v, want stop", resp.FinishReason)
+	}
+
+	if resp.RawFinishReason != "stop" {
+		t.Errorf("raw finish reason = %q, want stop", resp.RawFinishReason)
 	}
 
 	if resp.Metadata.RequestID != "chatcmpl-test" {
@@ -323,5 +328,267 @@ func TestOrganizationHeader(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("DoGenerate: %v", err)
+	}
+}
+
+func TestImageModelEditUsesImageFieldAndOutputFormatMIME(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/images/edits" {
+			t.Fatalf("path = %q, want /images/edits", r.URL.Path)
+		}
+
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+
+		if len(r.MultipartForm.File["image"]) != 1 {
+			t.Fatalf("image files = %d, want 1", len(r.MultipartForm.File["image"]))
+		}
+
+		if len(r.MultipartForm.File["image[]"]) != 0 {
+			t.Fatalf("image[] files = %d, want 0", len(r.MultipartForm.File["image[]"]))
+		}
+
+		if got := r.MultipartForm.Value["output_format"]; len(got) != 1 || got[0] != "jpeg" {
+			t.Fatalf("output_format = %v, want [jpeg]", got)
+		}
+
+		payload := map[string]any{
+			"data": []map[string]string{
+				{
+					"b64_json": base64.StdEncoding.EncodeToString([]byte("jpeg-bytes")),
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	m := openai.Image("gpt-image-1",
+		openai.WithAPIKey("test-key"),
+		openai.WithBaseURL(server.URL),
+	)
+
+	resp, err := m.DoGenerateImage(context.Background(), &model.ImageRequest{
+		Prompt:       "Edit this",
+		OutputFormat: "jpeg",
+		Images: []model.ImageInput{
+			{
+				Data:     []byte("png-data"),
+				MIMEType: "image/png",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DoGenerateImage: %v", err)
+	}
+
+	if len(resp.Images) != 1 {
+		t.Fatalf("images length = %d, want 1", len(resp.Images))
+	}
+
+	if resp.Images[0].MIMEType != "image/jpeg" {
+		t.Fatalf("MIMEType = %q, want image/jpeg", resp.Images[0].MIMEType)
+	}
+
+	if string(resp.Images[0].Data) != "jpeg-bytes" {
+		t.Fatalf("image bytes = %q, want jpeg-bytes", string(resp.Images[0].Data))
+	}
+}
+
+func TestImageModelGeneratePassesProviderOptions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/images/generations" {
+			t.Fatalf("path = %q, want /images/generations", r.URL.Path)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("Unmarshal: %v", err)
+		}
+
+		if req["user"] != "user-123" {
+			t.Fatalf("user = %v, want user-123", req["user"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"url":"https://example.com/image.png"}]}`))
+	}))
+	defer server.Close()
+
+	m := openai.Image("gpt-image-1",
+		openai.WithAPIKey("test-key"),
+		openai.WithBaseURL(server.URL),
+	)
+
+	resp, err := m.DoGenerateImage(context.Background(), &model.ImageRequest{
+		Prompt: "Draw a cat",
+		ProviderOptions: model.ProviderOptions{
+			"openai": {
+				"user": json.RawMessage(`"user-123"`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DoGenerateImage: %v", err)
+	}
+
+	if len(resp.Images) != 1 || resp.Images[0].URL != "https://example.com/image.png" {
+		t.Fatalf("images = %#v, want generated image URL", resp.Images)
+	}
+}
+
+func TestTranscriptionModelSupportsTextFormats(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/audio/transcriptions" {
+			t.Fatalf("path = %q, want /audio/transcriptions", r.URL.Path)
+		}
+
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+
+		if got := r.MultipartForm.Value["response_format"]; len(got) != 1 || got[0] != "vtt" {
+			t.Fatalf("response_format = %v, want [vtt]", got)
+		}
+
+		w.Header().Set("Content-Type", "text/vtt")
+		_, _ = w.Write([]byte("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n"))
+	}))
+	defer server.Close()
+
+	m := openai.Transcription("gpt-4o-mini-transcribe",
+		openai.WithAPIKey("test-key"),
+		openai.WithBaseURL(server.URL),
+	)
+
+	resp, err := m.DoTranscribe(context.Background(), &model.TranscriptionRequest{
+		ResponseFormat: "vtt",
+		Audio: model.AudioInput{
+			Data:     []byte("audio-bytes"),
+			Filename: "sample.wav",
+		},
+	})
+	if err != nil {
+		t.Fatalf("DoTranscribe: %v", err)
+	}
+
+	if resp.Text != "WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n" {
+		t.Fatalf("resp.Text = %q, want raw VTT body", resp.Text)
+	}
+}
+
+func TestTranscriptionModelPassesProviderOptions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+
+		got := r.MultipartForm.Value["timestamp_granularities[]"]
+		if len(got) != 2 || got[0] != "segment" || got[1] != "word" {
+			t.Fatalf("timestamp_granularities[] = %v, want [segment word]", got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"text":"Hello"}`))
+	}))
+	defer server.Close()
+
+	m := openai.Transcription("gpt-4o-mini-transcribe",
+		openai.WithAPIKey("test-key"),
+		openai.WithBaseURL(server.URL),
+	)
+
+	resp, err := m.DoTranscribe(context.Background(), &model.TranscriptionRequest{
+		Audio: model.AudioInput{
+			Data:     []byte("audio-bytes"),
+			Filename: "sample.wav",
+		},
+		ProviderOptions: model.ProviderOptions{
+			"openai": {
+				"timestamp_granularities[]": json.RawMessage(`["segment","word"]`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DoTranscribe: %v", err)
+	}
+
+	if resp.Text != "Hello" {
+		t.Fatalf("resp.Text = %q, want Hello", resp.Text)
+	}
+}
+
+func TestTranscriptionModelVerboseJSONSupportsSpeakerSegments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+
+		if got := r.MultipartForm.Value["response_format"]; len(got) != 1 || got[0] != "verbose_json" {
+			t.Fatalf("response_format = %v, want [verbose_json]", got)
+		}
+
+		payload := map[string]any{
+			"text":     "Hello there",
+			"language": "en",
+			"duration": 1.25,
+			"segments": []map[string]any{
+				{
+					"id":      "segment_1",
+					"start":   0.0,
+					"end":     1.25,
+					"text":    "Hello there",
+					"speaker": "A",
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	m := openai.Transcription("gpt-4o-mini-transcribe",
+		openai.WithAPIKey("test-key"),
+		openai.WithBaseURL(server.URL),
+	)
+
+	resp, err := m.DoTranscribe(context.Background(), &model.TranscriptionRequest{
+		ResponseFormat: "verbose_json",
+		Audio: model.AudioInput{
+			Data:     []byte("audio-bytes"),
+			Filename: "sample.wav",
+		},
+	})
+	if err != nil {
+		t.Fatalf("DoTranscribe: %v", err)
+	}
+
+	if resp.Text != "Hello there" {
+		t.Fatalf("resp.Text = %q, want Hello there", resp.Text)
+	}
+
+	if len(resp.Segments) != 1 {
+		t.Fatalf("segments length = %d, want 1", len(resp.Segments))
+	}
+
+	if resp.Segments[0].ID != "segment_1" {
+		t.Fatalf("segment ID = %q, want segment_1", resp.Segments[0].ID)
+	}
+
+	if resp.Segments[0].Speaker != "A" {
+		t.Fatalf("speaker = %q, want A", resp.Segments[0].Speaker)
 	}
 }

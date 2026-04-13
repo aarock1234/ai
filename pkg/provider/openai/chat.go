@@ -23,6 +23,9 @@ func (m *ChatModel) Provider() string { return "openai" }
 // ModelID returns the model identifier (e.g. "gpt-5.4").
 func (m *ChatModel) ModelID() string { return m.modelID }
 
+// SupportsResponseFormat reports whether this model supports native structured output.
+func (m *ChatModel) SupportsResponseFormat(_ *model.ResponseFormat) bool { return true }
+
 // DoGenerate sends a non-streaming chat completion request and returns
 // the normalized response.
 func (m *ChatModel) DoGenerate(ctx context.Context, req *model.Request) (*model.Response, error) {

@@ -5,22 +5,29 @@
 // and streaming.
 package openai
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // ChatRequest is the OpenAI chat completions request body.
 type ChatRequest struct {
-	Model          string            `json:"model"`
-	Messages       []chatMessage     `json:"messages"`
-	Temperature    *float64          `json:"temperature,omitempty"`
-	MaxTokens      *int              `json:"max_completion_tokens,omitempty"`
-	TopP           *float64          `json:"top_p,omitempty"`
-	Stop           []string          `json:"stop,omitempty"`
-	Tools          []chatTool        `json:"tools,omitempty"`
-	ToolChoice     any               `json:"tool_choice,omitempty"`
-	ResponseFormat *responseFormat   `json:"response_format,omitempty"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
-	Stream         bool              `json:"stream,omitempty"`
-	StreamOptions  *streamOptions    `json:"stream_options,omitempty"`
+	Model            string            `json:"model"`
+	Messages         []chatMessage     `json:"messages"`
+	Temperature      *float64          `json:"temperature,omitempty"`
+	MaxTokens        *int              `json:"max_completion_tokens,omitempty"`
+	TopP             *float64          `json:"top_p,omitempty"`
+	PresencePenalty  *float64          `json:"presence_penalty,omitempty"`
+	FrequencyPenalty *float64          `json:"frequency_penalty,omitempty"`
+	Seed             *int64            `json:"seed,omitempty"`
+	Stop             []string          `json:"stop,omitempty"`
+	Tools            []chatTool        `json:"tools,omitempty"`
+	ToolChoice       any               `json:"tool_choice,omitempty"`
+	ResponseFormat   *responseFormat   `json:"response_format,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+	Stream           bool              `json:"stream,omitempty"`
+	StreamOptions    *streamOptions    `json:"stream_options,omitempty"`
+	Headers          http.Header       `json:"-"`
 }
 
 type streamOptions struct {
@@ -34,6 +41,16 @@ type chatMessage struct {
 	ToolCalls  []wireToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string         `json:"tool_call_id,omitempty"`
 	Name       string         `json:"name,omitempty"`
+}
+
+type contentPart struct {
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *contentPartURL `json:"image_url,omitempty"`
+}
+
+type contentPartURL struct {
+	URL string `json:"url"`
 }
 
 // wireToolCall is a tool call in the OpenAI wire format.

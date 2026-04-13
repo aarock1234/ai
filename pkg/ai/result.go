@@ -15,6 +15,9 @@ type GenerateResult struct {
 	// content segments.
 	Text string
 
+	// Reasoning is provider or middleware-extracted reasoning text.
+	Reasoning string
+
 	// ToolCalls contains any tool invocations requested by the model.
 	ToolCalls []ToolCall
 
@@ -25,12 +28,18 @@ type GenerateResult struct {
 	// FinishReason indicates why the model stopped generating.
 	FinishReason model.FinishReason
 
+	// RawFinishReason is the provider-native finish reason string.
+	RawFinishReason string
+
 	// Usage tracks total token consumption across all steps.
 	Usage Usage
 
 	// Metadata carries provider/model response metadata for the final
 	// generation step.
 	Metadata model.ProviderMetadata
+
+	// Warnings carries provider warnings when available.
+	Warnings []string
 
 	// Steps contains the individual generation steps when using the
 	// tool loop (WithMaxSteps > 1).
@@ -39,12 +48,15 @@ type GenerateResult struct {
 
 // Step records a single generation step in a multi-step tool loop.
 type Step struct {
-	Text         string
-	ToolCalls    []ToolCall
-	ToolResults  []ToolResult
-	FinishReason model.FinishReason
-	Usage        Usage
-	Metadata     model.ProviderMetadata
+	Text            string
+	Reasoning       string
+	ToolCalls       []ToolCall
+	ToolResults     []ToolResult
+	FinishReason    model.FinishReason
+	RawFinishReason string
+	Usage           Usage
+	Metadata        model.ProviderMetadata
+	Warnings        []string
 }
 
 // StreamResult wraps a streaming response and provides iterators for
@@ -55,6 +67,7 @@ type StreamResult struct {
 	stream   iter.Seq[model.Chunk]
 	cancel   context.CancelFunc
 	metadata model.ProviderMetadata
+	onFinish []finishHook
 
 	mu       sync.Mutex
 	consumed bool
@@ -64,11 +77,12 @@ type StreamResult struct {
 
 // newStreamResult creates a StreamResult from a model chunk iterator.
 // If cancel is non-nil it is called when the stream is fully consumed.
-func newStreamResult(stream iter.Seq[model.Chunk], metadata model.ProviderMetadata, cancel context.CancelFunc) *StreamResult {
+func newStreamResult(stream iter.Seq[model.Chunk], metadata model.ProviderMetadata, cancel context.CancelFunc, onFinish []finishHook) *StreamResult {
 	return &StreamResult{
 		stream:   stream,
 		cancel:   cancel,
 		metadata: metadata.Clone(),
+		onFinish: append([]finishHook(nil), onFinish...),
 	}
 }
 
@@ -86,62 +100,14 @@ func (s *StreamResult) done() {
 // response.
 func (s *StreamResult) Text() iter.Seq[string] {
 	return func(yield func(string) bool) {
-		var textBuilder strings.Builder
-		var toolCalls []ToolCall
-		var finishReason model.FinishReason
-		var usage Usage
-
-		// Accumulate tool call deltas by ID.
-		toolCallArgs := make(map[string]*strings.Builder)
-		toolCallNames := make(map[string]string)
-
-		for chunk := range s.stream {
-			switch c := chunk.(type) {
-			case model.TextDelta:
-				textBuilder.WriteString(c.Text)
-				if !yield(c.Text) {
-					return
-				}
-			case model.ToolCallDelta:
-				if _, ok := toolCallArgs[c.ToolCallID]; !ok {
-					toolCallArgs[c.ToolCallID] = &strings.Builder{}
-				}
-				toolCallArgs[c.ToolCallID].WriteString(c.ArgsJSON)
-				if c.ToolName != "" {
-					toolCallNames[c.ToolCallID] = c.ToolName
-				}
-			case model.FinishChunk:
-				finishReason = c.FinishReason
-			case model.UsageChunk:
-				usage = c.Usage
-			case model.ProviderMetadataChunk:
-				s.mu.Lock()
-				s.metadata = c.Metadata.Clone()
-				s.mu.Unlock()
+		s.consume(func(chunk model.Chunk) bool {
+			text, ok := chunk.(model.TextDelta)
+			if !ok {
+				return true
 			}
-		}
 
-		// Build tool calls from accumulated deltas.
-		for id, args := range toolCallArgs {
-			toolCalls = append(toolCalls, ToolCall{
-				ToolCallID: id,
-				ToolName:   toolCallNames[id],
-				Args:       []byte(args.String()),
-			})
-		}
-
-		s.mu.Lock()
-		s.consumed = true
-		s.final = &GenerateResult{
-			Text:         textBuilder.String(),
-			ToolCalls:    toolCalls,
-			FinishReason: finishReason,
-			Usage:        usage,
-			Metadata:     s.metadata.Clone(),
-		}
-		s.mu.Unlock()
-
-		s.done()
+			return yield(text.Text)
+		})
 	}
 }
 
@@ -151,13 +117,7 @@ func (s *StreamResult) Text() iter.Seq[string] {
 // (if set via WithTimeout) is called when the iterator finishes.
 func (s *StreamResult) Chunks() iter.Seq[model.Chunk] {
 	return func(yield func(model.Chunk) bool) {
-		defer s.done()
-
-		for chunk := range s.stream {
-			if !yield(chunk) {
-				return
-			}
-		}
+		s.consume(yield)
 	}
 }
 
@@ -184,7 +144,7 @@ func (s *StreamResult) Result() (*GenerateResult, error) {
 	s.mu.Unlock()
 
 	// Consume remaining stream.
-	s.Text()(func(string) bool {
+	s.consume(func(model.Chunk) bool {
 		return true
 	})
 
@@ -194,10 +154,95 @@ func (s *StreamResult) Result() (*GenerateResult, error) {
 	return s.final, s.err
 }
 
+func (s *StreamResult) consume(yield func(model.Chunk) bool) {
+	var (
+		textBuilder      strings.Builder
+		reasoningBuilder strings.Builder
+		toolCalls        []ToolCall
+		finishReason     model.FinishReason
+		rawFinishReason  string
+		usage            Usage
+		warnings         []string
+	)
+
+	toolCallArgs := make(map[string]*strings.Builder)
+	toolCallNames := make(map[string]string)
+
+	defer func() {
+		for id, args := range toolCallArgs {
+			toolCalls = append(toolCalls, ToolCall{
+				ToolCallID: id,
+				ToolName:   toolCallNames[id],
+				Args:       []byte(args.String()),
+			})
+		}
+
+		result := &GenerateResult{
+			Text:            textBuilder.String(),
+			Reasoning:       reasoningBuilder.String(),
+			ToolCalls:       toolCalls,
+			FinishReason:    finishReason,
+			RawFinishReason: rawFinishReason,
+			Usage:           usage,
+			Metadata:        s.Metadata(),
+			Warnings:        warnings,
+		}
+
+		s.mu.Lock()
+		s.consumed = true
+		s.final = result
+		s.mu.Unlock()
+
+		if err := runFinishHooks(s.onFinish, result); err != nil {
+			s.mu.Lock()
+			s.err = err
+			s.mu.Unlock()
+		}
+
+		s.done()
+	}()
+
+	for chunk := range s.stream {
+		switch c := chunk.(type) {
+		case model.TextDelta:
+			textBuilder.WriteString(c.Text)
+		case model.ReasoningDelta:
+			reasoningBuilder.WriteString(c.Text)
+		case model.ToolCallDelta:
+			if _, ok := toolCallArgs[c.ToolCallID]; !ok {
+				toolCallArgs[c.ToolCallID] = &strings.Builder{}
+			}
+			toolCallArgs[c.ToolCallID].WriteString(c.ArgsJSON)
+			if c.ToolName != "" {
+				toolCallNames[c.ToolCallID] = c.ToolName
+			}
+		case model.FinishChunk:
+			finishReason = c.FinishReason
+			rawFinishReason = c.RawFinishReason
+			if rawFinishReason == "" {
+				rawFinishReason = string(c.FinishReason)
+			}
+		case model.UsageChunk:
+			usage = c.Usage
+		case model.ProviderMetadataChunk:
+			s.mu.Lock()
+			s.metadata = c.Metadata.Clone()
+			s.mu.Unlock()
+		}
+
+		if !yield(chunk) {
+			return
+		}
+	}
+}
+
 // ObjectResult is the result of a GenerateObject call.
 type ObjectResult[T any] struct {
 	// Object is the generated structured output, unmarshaled into T.
 	Object T
+
+	// RawJSON is the raw JSON payload used to unmarshal Object.
+	RawJSON string
 
 	// Usage tracks token consumption for the request.
 	Usage Usage

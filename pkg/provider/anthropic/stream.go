@@ -114,7 +114,10 @@ func DecodeStream(r io.Reader) iter.Seq[model.Chunk] {
 				}
 
 				if msgDelta.Delta.StopReason != "" {
-					if !yield(model.FinishChunk{FinishReason: mapFinishReason(msgDelta.Delta.StopReason)}) {
+					if !yield(model.FinishChunk{
+						FinishReason:    mapFinishReason(msgDelta.Delta.StopReason),
+						RawFinishReason: msgDelta.Delta.StopReason,
+					}) {
 						return
 					}
 				}

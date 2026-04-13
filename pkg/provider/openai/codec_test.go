@@ -105,6 +105,48 @@ func TestEncodeRequestWithTools(t *testing.T) {
 	}
 }
 
+func TestEncodeRequestWithImagePart(t *testing.T) {
+	req := &model.Request{
+		Messages: []model.Message{
+			{
+				Role: model.RoleUser,
+				Parts: []model.Part{
+					model.TextPart{Text: "Describe this image"},
+					model.ImagePart{
+						URL: "https://example.com/cat.png",
+					},
+				},
+			},
+		},
+	}
+
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
+	if err != nil {
+		t.Fatalf("EncodeRequest: %v", err)
+	}
+
+	body, err := openai.MarshalRequest(chatReq)
+	if err != nil {
+		t.Fatalf("MarshalRequest: %v", err)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	msgs := raw["messages"].([]any)
+	content := msgs[0].(map[string]any)["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content length = %d, want 2", len(content))
+	}
+
+	imagePart := content[1].(map[string]any)
+	if imagePart["type"] != "image_url" {
+		t.Fatalf("image part type = %v, want image_url", imagePart["type"])
+	}
+}
+
 func TestEncodeRequestStreaming(t *testing.T) {
 	req := &model.Request{
 		Messages: []model.Message{
@@ -794,6 +836,46 @@ func TestExtraHeadersSent(t *testing.T) {
 				Role:  model.RoleUser,
 				Parts: []model.Part{model.TextPart{Text: "Hi"}},
 			},
+		},
+	}
+
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
+	if err != nil {
+		t.Fatalf("EncodeRequest: %v", err)
+	}
+
+	_, err = openai.DoRequest(context.Background(), cfg, chatReq)
+	if err != nil {
+		t.Fatalf("DoRequest: %v", err)
+	}
+}
+
+func TestPerRequestHeadersSent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Request-Scoped") != "request-value" {
+			t.Errorf("X-Request-Scoped = %q, want request-value", r.Header.Get("X-Request-Scoped"))
+		}
+
+		resp := `{"id":"1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(resp))
+	}))
+	defer server.Close()
+
+	cfg := &openai.ClientConfig{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	}
+
+	req := &model.Request{
+		Messages: []model.Message{
+			{
+				Role:  model.RoleUser,
+				Parts: []model.Part{model.TextPart{Text: "Hi"}},
+			},
+		},
+		Headers: http.Header{
+			"X-Request-Scoped": {"request-value"},
 		},
 	}
 

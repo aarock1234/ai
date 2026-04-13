@@ -25,6 +25,11 @@ func (m *ChatModel) Provider() string { return "openrouter" }
 // ModelID returns the model identifier (e.g. "openai/gpt-5.4").
 func (m *ChatModel) ModelID() string { return m.modelID }
 
+// SupportsResponseFormat reports whether this model supports native structured output.
+// OpenRouter routes requests across heterogeneous upstream models, so the SDK
+// defaults to the provider-agnostic fallback path instead of assuming native support.
+func (m *ChatModel) SupportsResponseFormat(_ *model.ResponseFormat) bool { return false }
+
 // DoGenerate sends a non-streaming chat completion request and returns
 // the normalized response.
 func (m *ChatModel) DoGenerate(ctx context.Context, req *model.Request) (*model.Response, error) {

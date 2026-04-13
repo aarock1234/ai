@@ -67,7 +67,7 @@ func (m *EmbeddingModel) DoEmbed(ctx context.Context, texts []string) (*model.Em
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	setHeaders(httpReq, m.clientConfig)
+	setHeaders(httpReq, m.clientConfig, nil)
 
 	resp, err := m.clientConfig.httpClient().Do(httpReq)
 	if err != nil {
@@ -99,6 +99,9 @@ func (m *EmbeddingModel) DoEmbed(ctx context.Context, texts []string) (*model.Em
 		Embeddings: embeddings,
 		Usage: model.Usage{
 			InputTokens: result.Usage.PromptTokens,
+		},
+		Metadata: model.ProviderMetadata{
+			ModelID: m.modelID,
 		},
 	}, nil
 }

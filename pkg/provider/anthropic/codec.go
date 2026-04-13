@@ -1,6 +1,9 @@
 package anthropic
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // MessageRequest is the Anthropic Messages API request body.
 type MessageRequest struct {
@@ -10,11 +13,13 @@ type MessageRequest struct {
 	MaxTokens     int               `json:"max_tokens"`
 	Temperature   *float64          `json:"temperature,omitempty"`
 	TopP          *float64          `json:"top_p,omitempty"`
+	TopK          *int              `json:"top_k,omitempty"`
 	StopSequences []string          `json:"stop_sequences,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
 	Tools         []toolDefinition  `json:"tools,omitempty"`
 	ToolChoice    *toolChoice       `json:"tool_choice,omitempty"`
 	Stream        bool              `json:"stream,omitempty"`
+	Headers       http.Header       `json:"-"`
 }
 
 type message struct {

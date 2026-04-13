@@ -23,6 +23,9 @@ func (m *ChatModel) Provider() string { return "anthropic" }
 // ModelID returns the model identifier.
 func (m *ChatModel) ModelID() string { return m.modelID }
 
+// SupportsResponseFormat reports whether this model supports native structured output.
+func (m *ChatModel) SupportsResponseFormat(_ *model.ResponseFormat) bool { return false }
+
 // DoGenerate sends a non-streaming Messages API request and returns the
 // normalized response.
 func (m *ChatModel) DoGenerate(ctx context.Context, req *model.Request) (*model.Response, error) {

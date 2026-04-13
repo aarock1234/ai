@@ -19,6 +19,9 @@ type Tool struct {
 	// parameters. Use SchemaFor[T]() to generate this from a Go type.
 	InputSchema json.RawMessage
 
+	// Strict requests strict schema adherence when the provider supports it.
+	Strict bool
+
 	// Execute is called when the model invokes this tool. It receives
 	// the raw JSON arguments and returns a string result. If nil, the
 	// tool loop will not execute this tool automatically.

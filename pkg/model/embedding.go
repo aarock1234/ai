@@ -25,4 +25,7 @@ type EmbedResponse struct {
 
 	// Usage tracks token consumption for the embedding request.
 	Usage Usage
+
+	// Metadata carries provider/model response metadata when available.
+	Metadata ProviderMetadata
 }

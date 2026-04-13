@@ -48,7 +48,7 @@ func DoRequest(ctx context.Context, cfg *ClientConfig, req *MessageRequest) (*Me
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	setHeaders(httpReq, cfg)
+	setHeaders(httpReq, cfg, req.Headers)
 
 	resp, err := cfg.httpClient().Do(httpReq)
 	if err != nil {
@@ -87,7 +87,7 @@ func DoStreamRequest(ctx context.Context, cfg *ClientConfig, req *MessageRequest
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	setHeaders(httpReq, cfg)
+	setHeaders(httpReq, cfg, req.Headers)
 
 	resp, err := cfg.httpClient().Do(httpReq)
 	if err != nil {
@@ -108,7 +108,7 @@ func DoStreamRequest(ctx context.Context, cfg *ClientConfig, req *MessageRequest
 	return resp.Body, nil
 }
 
-func setHeaders(req *http.Request, cfg *ClientConfig) {
+func setHeaders(req *http.Request, cfg *ClientConfig, extra http.Header) {
 	req.Header.Set("Content-Type", "application/json")
 
 	if cfg.APIKey != "" {
@@ -117,6 +117,12 @@ func setHeaders(req *http.Request, cfg *ClientConfig) {
 
 	if cfg.APIVersion != "" {
 		req.Header.Set("anthropic-version", cfg.APIVersion)
+	}
+
+	for key, values := range extra {
+		for _, value := range values {
+			req.Header.Set(key, value)
+		}
 	}
 }
 

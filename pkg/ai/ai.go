@@ -7,8 +7,12 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
+	"github.com/aarock1234/ai/internal/apierror"
 	"github.com/aarock1234/ai/pkg/model"
 )
 
@@ -18,7 +22,10 @@ import (
 // tool loop: it calls tools, feeds results back to the model, and
 // repeats until the model stops or the step limit is reached.
 func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*GenerateResult, error) {
-	cfg := resolveConfig(opts)
+	cfg, err := resolveConfig(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	if cfg.timeout > 0 {
 		var cancel context.CancelFunc
@@ -33,7 +40,13 @@ func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*Generate
 	var totalUsage Usage
 
 	for step := range cfg.maxSteps {
-		resp, err := m.DoGenerate(ctx, req)
+		for _, hook := range cfg.prepareStep {
+			if err := hook(ctx, step, req); err != nil {
+				return nil, fmt.Errorf("prepare step %d: %w", step, err)
+			}
+		}
+
+		resp, err := doGenerate(ctx, m, req, cfg.maxRetries)
 		if err != nil {
 			return nil, fmt.Errorf("step %d: %w", step, err)
 		}
@@ -42,10 +55,26 @@ func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*Generate
 		steps = append(steps, stepResult)
 		totalUsage.InputTokens += stepResult.Usage.InputTokens
 		totalUsage.OutputTokens += stepResult.Usage.OutputTokens
+		totalUsage.CachedInputTokens += stepResult.Usage.CachedInputTokens
+		totalUsage.ReasoningTokens += stepResult.Usage.ReasoningTokens
+		totalUsage.ImageInputTokens += stepResult.Usage.ImageInputTokens
+		totalUsage.ImageOutputTokens += stepResult.Usage.ImageOutputTokens
+		totalUsage.AudioInputTokens += stepResult.Usage.AudioInputTokens
+		totalUsage.AudioOutputTokens += stepResult.Usage.AudioOutputTokens
+
+		for _, hook := range cfg.onStepFinish {
+			if err := hook(ctx, stepResult); err != nil {
+				return nil, fmt.Errorf("on step finish %d: %w", step, err)
+			}
+		}
+
+		if shouldStop(cfg.stopWhen, stepResult) {
+			return finalizeResult(ctx, cfg.onFinish, buildResult(steps, totalUsage))
+		}
 
 		// If no tool calls or no tools configured, we're done.
 		if resp.FinishReason != model.FinishReasonToolCalls || len(toolMap) == 0 {
-			return buildResult(steps, totalUsage), nil
+			return finalizeResult(ctx, cfg.onFinish, buildResult(steps, totalUsage))
 		}
 
 		// Execute tool calls and append results.
@@ -56,7 +85,7 @@ func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*Generate
 		req.Messages = appendToolMessages(req.Messages, stepResult, toolResults)
 	}
 
-	return buildResult(steps, totalUsage), nil
+	return finalizeResult(ctx, cfg.onFinish, buildResult(steps, totalUsage))
 }
 
 // StreamText sends a streaming generation request to the model and
@@ -64,7 +93,10 @@ func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*Generate
 // an iterator. The stream must be consumed by ranging over Text() or
 // calling Result().
 func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResult, error) {
-	cfg := resolveConfig(opts)
+	cfg, err := resolveConfig(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	var cancel context.CancelFunc
 	if cfg.timeout > 0 {
@@ -73,7 +105,17 @@ func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResu
 
 	req := buildRequest(cfg)
 
-	streamResp, err := m.DoStream(ctx, req)
+	for _, hook := range cfg.prepareStep {
+		if err := hook(ctx, 0, req); err != nil {
+			if cancel != nil {
+				cancel()
+			}
+
+			return nil, fmt.Errorf("prepare stream: %w", err)
+		}
+	}
+
+	streamResp, err := doStream(ctx, m, req, cfg.maxRetries)
 	if err != nil {
 		if cancel != nil {
 			cancel()
@@ -82,11 +124,11 @@ func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResu
 		return nil, err
 	}
 
-	return newStreamResult(streamResp.Stream, streamResp.Metadata, cancel), nil
+	return newStreamResult(streamResp.Stream, streamResp.Metadata, cancel, bindFinishHooks(ctx, cfg.onFinish)), nil
 }
 
 // resolveConfig applies options to a config with sensible defaults.
-func resolveConfig(opts []Option) *config {
+func resolveConfig(opts []Option) (*config, error) {
 	cfg := &config{
 		maxSteps: 1,
 	}
@@ -94,7 +136,14 @@ func resolveConfig(opts []Option) *config {
 		opt(cfg)
 	}
 
-	return cfg
+	if cfg.maxSteps < 1 {
+		return nil, ErrInvalidMaxSteps
+	}
+	if cfg.err != nil {
+		return nil, cfg.err
+	}
+
+	return cfg, nil
 }
 
 // buildRequest creates a model.Request from resolved config.
@@ -123,24 +172,36 @@ func buildRequest(cfg *config) *model.Request {
 	}
 
 	req := &model.Request{
-		Messages:        messages,
-		Temperature:     cfg.temperature,
-		MaxTokens:       cfg.maxTokens,
-		TopP:            cfg.topP,
-		StopSequences:   cfg.stopSequences,
-		ResponseFormat:  cfg.responseFormat,
-		ProviderOptions: cfg.providerOpts.Clone(),
+		Messages:         messages,
+		Temperature:      cfg.temperature,
+		MaxTokens:        cfg.maxTokens,
+		TopP:             cfg.topP,
+		TopK:             cfg.topK,
+		PresencePenalty:  cfg.presencePenalty,
+		FrequencyPenalty: cfg.frequencyPenalty,
+		Seed:             cfg.seed,
+		StopSequences:    append([]string(nil), cfg.stopSequences...),
+		ToolChoice:       cloneToolChoice(cfg.toolChoice),
+		ResponseFormat:   cloneResponseFormat(cfg.responseFormat),
+		Headers:          cloneHeaders(cfg.headers),
+		ProviderOptions:  cfg.providerOpts.Clone(),
 	}
 
 	// Attach tool definitions.
 	if len(cfg.tools) > 0 {
+		activeTools := buildActiveToolSet(cfg.activeTools)
 		for _, t := range cfg.tools {
+			if len(activeTools) > 0 && !activeTools[t.Name] {
+				continue
+			}
 			req.Tools = append(req.Tools, model.ToolDefinition{
 				Name:        t.Name,
 				Description: t.Description,
 				InputSchema: t.InputSchema,
+				Strict:      t.Strict,
 			})
 		}
+		req.ActiveTools = append([]string(nil), cfg.activeTools...)
 	}
 
 	return req
@@ -225,11 +286,14 @@ func extractStep(resp *model.Response) Step {
 	}
 
 	return Step{
-		Text:         text,
-		ToolCalls:    toolCalls,
-		FinishReason: resp.FinishReason,
-		Usage:        resp.Usage,
-		Metadata:     resp.Metadata.Clone(),
+		Text:            text,
+		Reasoning:       resp.Reasoning,
+		ToolCalls:       toolCalls,
+		FinishReason:    resp.FinishReason,
+		RawFinishReason: resp.RawFinishReason,
+		Usage:           resp.Usage,
+		Metadata:        resp.Metadata.Clone(),
+		Warnings:        append([]string(nil), resp.Warnings...),
 	}
 }
 
@@ -336,12 +400,211 @@ func buildResult(steps []Step, totalUsage Usage) *GenerateResult {
 	}
 
 	return &GenerateResult{
-		Text:         last.Text,
-		ToolCalls:    last.ToolCalls,
-		ToolResults:  allToolResults,
-		FinishReason: last.FinishReason,
-		Usage:        totalUsage,
-		Steps:        steps,
-		Metadata:     last.Metadata.Clone(),
+		Text:            last.Text,
+		Reasoning:       last.Reasoning,
+		ToolCalls:       last.ToolCalls,
+		ToolResults:     allToolResults,
+		FinishReason:    last.FinishReason,
+		RawFinishReason: last.RawFinishReason,
+		Usage:           totalUsage,
+		Steps:           steps,
+		Metadata:        last.Metadata.Clone(),
+		Warnings:        append([]string(nil), last.Warnings...),
+	}
+}
+
+func buildActiveToolSet(names []string) map[string]bool {
+	if len(names) == 0 {
+		return nil
+	}
+
+	active := make(map[string]bool, len(names))
+	for _, name := range names {
+		active[name] = true
+	}
+
+	return active
+}
+
+func cloneToolChoice(choice *model.ToolChoice) *model.ToolChoice {
+	if choice == nil {
+		return nil
+	}
+
+	return &model.ToolChoice{
+		Type:     choice.Type,
+		ToolName: choice.ToolName,
+	}
+}
+
+func cloneResponseFormat(rf *model.ResponseFormat) *model.ResponseFormat {
+	if rf == nil {
+		return nil
+	}
+
+	cloned := &model.ResponseFormat{
+		Type: rf.Type,
+	}
+
+	if rf.JSONSchema != nil {
+		cloned.JSONSchema = &model.JSONSchema{
+			Name:   rf.JSONSchema.Name,
+			Schema: append(json.RawMessage(nil), rf.JSONSchema.Schema...),
+			Strict: rf.JSONSchema.Strict,
+		}
+	}
+
+	return cloned
+}
+
+func cloneHeaders(headers http.Header) http.Header {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	return headers.Clone()
+}
+
+func shouldStop(conditions []StopWhenFunc, step Step) bool {
+	for _, fn := range conditions {
+		if fn(step) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func finalizeResult(ctx context.Context, hooks []OnFinishFunc, result *GenerateResult) (*GenerateResult, error) {
+	for _, hook := range hooks {
+		if err := hook(ctx, result); err != nil {
+			return nil, fmt.Errorf("on finish: %w", err)
+		}
+	}
+
+	return result, nil
+}
+
+type finishHook func(*GenerateResult) error
+
+type stepHook func(Step) error
+
+func bindFinishHooks(ctx context.Context, hooks []OnFinishFunc) []finishHook {
+	if len(hooks) == 0 {
+		return nil
+	}
+
+	bound := make([]finishHook, len(hooks))
+	for i, hook := range hooks {
+		bound[i] = func(result *GenerateResult) error {
+			return hook(ctx, result)
+		}
+	}
+
+	return bound
+}
+
+func bindStepHooks(ctx context.Context, hooks []OnStepFinishFunc) []stepHook {
+	if len(hooks) == 0 {
+		return nil
+	}
+
+	bound := make([]stepHook, len(hooks))
+	for i, hook := range hooks {
+		bound[i] = func(step Step) error {
+			return hook(ctx, step)
+		}
+	}
+
+	return bound
+}
+
+func runStepHooks(hooks []stepHook, step Step) error {
+	for _, hook := range hooks {
+		if err := hook(step); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func runFinishHooks(hooks []finishHook, result *GenerateResult) error {
+	for _, hook := range hooks {
+		if err := hook(result); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func doGenerate(ctx context.Context, m model.Model, req *model.Request, maxRetries int) (*model.Response, error) {
+	var lastErr error
+
+	for attempt := range maxRetries + 1 {
+		resp, err := m.DoGenerate(ctx, req.Clone())
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
+		if attempt == maxRetries || !isRetryableError(err) {
+			return nil, err
+		}
+
+		if err := waitForRetry(ctx, attempt); err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
+}
+
+func doStream(ctx context.Context, m model.Model, req *model.Request, maxRetries int) (*model.StreamResponse, error) {
+	var lastErr error
+
+	for attempt := range maxRetries + 1 {
+		resp, err := m.DoStream(ctx, req.Clone())
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
+		if attempt == maxRetries || !isRetryableError(err) {
+			return nil, err
+		}
+
+		if err := waitForRetry(ctx, attempt); err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
+}
+
+func isRetryableError(err error) bool {
+	var apiErr *apierror.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.IsRetryable
+	}
+
+	return false
+}
+
+func waitForRetry(ctx context.Context, attempt int) error {
+	backoff := 100 * time.Millisecond
+	for range attempt {
+		backoff *= 2
+	}
+
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }

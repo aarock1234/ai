@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -10,16 +11,22 @@ import (
 // EncodeRequest converts a normalized model.Request into the OpenAI
 // chat completions wire format.
 func EncodeRequest(modelID string, req *model.Request, stream bool) (*ChatRequest, error) {
-	msgs := convertMessages(req.Messages)
+	msgs, err := convertMessages(req.Messages)
+	if err != nil {
+		return nil, err
+	}
 
 	cr := &ChatRequest{
-		Model:       modelID,
-		Messages:    msgs,
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
-		TopP:        req.TopP,
-		Stop:        req.StopSequences,
-		Stream:      stream,
+		Model:            modelID,
+		Messages:         msgs,
+		Temperature:      req.Temperature,
+		MaxTokens:        req.MaxTokens,
+		TopP:             req.TopP,
+		PresencePenalty:  req.PresencePenalty,
+		FrequencyPenalty: req.FrequencyPenalty,
+		Seed:             req.Seed,
+		Stop:             req.StopSequences,
+		Stream:           stream,
 	}
 
 	metadata, err := convertProviderMetadata(req.ProviderOptions)
@@ -44,6 +51,10 @@ func EncodeRequest(modelID string, req *model.Request, stream bool) (*ChatReques
 
 	if req.ResponseFormat != nil {
 		cr.ResponseFormat = convertResponseFormat(req.ResponseFormat)
+	}
+
+	if len(req.Headers) > 0 {
+		cr.Headers = req.Headers.Clone()
 	}
 
 	return cr, nil
@@ -81,8 +92,9 @@ func DecodeResponse(resp *ChatResponse) *model.Response {
 	}
 
 	return &model.Response{
-		Content:      content,
-		FinishReason: mapFinishReason(choice.FinishReason),
+		Content:         content,
+		FinishReason:    mapFinishReason(choice.FinishReason),
+		RawFinishReason: choice.FinishReason,
 		Usage: model.Usage{
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
@@ -122,22 +134,28 @@ func responseMetadata(resp *ChatResponse) model.ProviderMetadata {
 }
 
 // convertMessages translates model messages into the OpenAI wire format.
-func convertMessages(msgs []model.Message) []chatMessage {
+func convertMessages(msgs []model.Message) ([]chatMessage, error) {
 	result := make([]chatMessage, 0, len(msgs))
 
 	for _, msg := range msgs {
-		result = append(result, convertMessage(msg)...)
+		converted, err := convertMessage(msg)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, converted...)
 	}
 
-	return result
+	return result, nil
 }
 
 // convertMessage converts a single model.Message. A message with
 // tool call parts becomes an assistant message; tool result parts
 // each become separate tool-role messages.
-func convertMessage(msg model.Message) []chatMessage {
+func convertMessage(msg model.Message) ([]chatMessage, error) {
 	// Collect text, tool calls, and tool results from parts.
 	var text string
+	var content []contentPart
 	var toolCalls []wireToolCall
 	var toolResults []chatMessage
 
@@ -145,6 +163,10 @@ func convertMessage(msg model.Message) []chatMessage {
 		switch p := part.(type) {
 		case model.TextPart:
 			text += p.Text
+			content = append(content, contentPart{
+				Type: "text",
+				Text: p.Text,
+			})
 		case model.ToolCallPart:
 			toolCalls = append(toolCalls, wireToolCall{
 				ID:   p.ToolCallID,
@@ -162,16 +184,29 @@ func convertMessage(msg model.Message) []chatMessage {
 				Name:       p.ToolName,
 			})
 		case model.ImagePart:
-			// Image parts use the content array format.
-			// For now, only URL-based images are supported.
-			// TODO: support base64 inline images.
+			if msg.Role != model.RoleUser {
+				return nil, fmt.Errorf("image parts are only supported in user messages")
+			}
+
+			url, err := imagePartURL(p)
+			if err != nil {
+				return nil, err
+			}
+
+			content = append(content, contentPart{
+				Type: "image_url",
+				ImageURL: &contentPartURL{
+					URL: url,
+				},
+			})
 		}
 	}
 
 	var result []chatMessage
 
 	// If the message has tool calls, it's an assistant message.
-	if len(toolCalls) > 0 {
+	switch {
+	case len(toolCalls) > 0:
 		cm := chatMessage{
 			Role:      string(msg.Role),
 			ToolCalls: toolCalls,
@@ -180,7 +215,18 @@ func convertMessage(msg model.Message) []chatMessage {
 			cm.Content = text
 		}
 		result = append(result, cm)
-	} else if text != "" || msg.Role == model.RoleSystem {
+	case len(content) > 0:
+		cm := chatMessage{
+			Role: string(msg.Role),
+		}
+		switch {
+		case len(content) == 1 && content[0].Type == "text":
+			cm.Content = content[0].Text
+		default:
+			cm.Content = content
+		}
+		result = append(result, cm)
+	case msg.Role == model.RoleSystem:
 		result = append(result, chatMessage{
 			Role:    string(msg.Role),
 			Content: text,
@@ -190,7 +236,7 @@ func convertMessage(msg model.Message) []chatMessage {
 	// Tool results are separate messages with role "tool".
 	result = append(result, toolResults...)
 
-	return result
+	return result, nil
 }
 
 // convertTools translates model tool definitions to the wire format.
@@ -208,6 +254,21 @@ func convertTools(tools []model.ToolDefinition) []chatTool {
 	}
 
 	return result
+}
+
+func imagePartURL(part model.ImagePart) (string, error) {
+	switch {
+	case part.URL != "":
+		return part.URL, nil
+	case len(part.Data) > 0:
+		if part.MIMEType == "" {
+			return "", fmt.Errorf("image data requires mime type")
+		}
+
+		return "data:" + part.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(part.Data), nil
+	default:
+		return "", fmt.Errorf("image part requires url or data")
+	}
 }
 
 // convertToolChoice translates the model ToolChoice to the wire format.

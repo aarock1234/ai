@@ -29,6 +29,12 @@ type Model interface {
 	DoStream(ctx context.Context, req *Request) (*StreamResponse, error)
 }
 
+// ResponseFormatSupport reports whether a model supports a given
+// response format natively.
+type ResponseFormatSupport interface {
+	SupportsResponseFormat(rf *ResponseFormat) bool
+}
+
 // StreamResponse wraps the streaming iterator with response metadata
 // that is available before the stream is consumed.
 type StreamResponse struct {

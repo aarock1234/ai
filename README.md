@@ -78,6 +78,23 @@ if err != nil {
 fmt.Println(result.Object.Name)
 ```
 
+For streaming structured output:
+
+```go
+stream, err := ai.StreamObject[Recipe](ctx, openai.Chat("gpt-5.4"),
+	ai.WithPrompt("A recipe for pasta carbonara"),
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+for delta := range stream.JSON() {
+	fmt.Print(delta)
+}
+
+result, err := stream.Result()
+```
+
 ## Tool Calling
 
 Define tools and let the SDK run the automatic tool loop.
@@ -112,6 +129,42 @@ results, err := ai.EmbedMany(ctx, openai.Embedding("text-embedding-3-small"),
 )
 ```
 
+## Images
+
+```go
+result, err := ai.GenerateImage(ctx, openai.Image("gpt-image-1"), model.ImageRequest{
+	Prompt:       "A watercolor lighthouse at sunrise",
+	Size:         "1024x1024",
+	OutputFormat: "png",
+})
+```
+
+## Audio
+
+```go
+speech, err := ai.GenerateSpeech(ctx, openai.Speech("gpt-4o-mini-tts"), model.SpeechRequest{
+	Input:          "Hello from the AI SDK for Go.",
+	Voice:          "alloy",
+	ResponseFormat: "mp3",
+})
+
+transcript, err := ai.Transcribe(ctx, openai.Transcription("gpt-4o-mini-transcribe"), model.TranscriptionRequest{
+	Audio: model.AudioInput{
+		Data:     audioBytes,
+		Filename: "sample.mp3",
+	},
+})
+```
+
+## Reranking
+
+```go
+result, err := ai.Rerank(ctx, cohere.Rerank("rerank-v3.5"), model.RerankRequest{
+	Query:     "golang concurrency",
+	Documents: docs,
+})
+```
+
 ## Providers
 
 Swap providers without changing your application code.
@@ -122,6 +175,12 @@ model := openai.Chat("gpt-5.4")
 
 // OpenRouter (access 200+ models)
 model := openrouter.Chat("anthropic/claude-sonnet-4-20250514")
+
+// Anthropic
+model := anthropic.Chat("claude-sonnet-4-5")
+
+// Cohere reranking
+ranker := cohere.Rerank("rerank-v3.5")
 
 // Any OpenAI-compatible API
 model := openai.Chat("my-model", openai.WithBaseURL("https://my-api.example.com/v1"))
@@ -175,20 +234,30 @@ result, err := ai.GenerateText(ctx, p.Chat(os.Getenv("AI_MODEL")),
 | `WithSystem(s)` | Set the system message |
 | `WithMessages(m...)` | Provide full conversation history |
 | `WithTools(t...)` | Register tools for the model |
+| `WithActiveTools(names...)` | Limit the active tool subset |
+| `WithToolChoice(choice)` | Control tool selection policy |
 | `WithMaxSteps(n)` | Max iterations in the tool loop (default: 1) |
+| `WithMaxRetries(n)` | Retry retryable provider failures |
 | `WithMaxTokens(n)` | Limit response token count |
 | `WithTemperature(f)` | Sampling temperature (0.0 -- 2.0) |
 | `WithTopP(f)` | Nucleus sampling parameter |
+| `WithTopK(n)` | Top-k sampling parameter |
+| `WithPresencePenalty(f)` | Penalize repeated topics |
+| `WithFrequencyPenalty(f)` | Penalize repeated tokens |
+| `WithSeed(n)` | Request deterministic sampling when supported |
 | `WithStopSequences(s...)` | Stop generation at these sequences |
+| `WithHeaders(h)` | Attach per-request HTTP headers |
 | `WithTimeout(d)` | Overall request timeout |
 
 ## Architecture
 
 ```
 pkg/
-├── ai/            Consumer API: GenerateText, StreamText, GenerateObject, Embed
-├── model/         Provider contract: Model and EmbeddingModel interfaces
+├── ai/            Consumer API: text, object, image, audio, rerank, middleware
+├── model/         Provider contracts and normalized request/response types
 ├── provider/
+│   ├── anthropic/ Anthropic Messages API provider
+│   ├── cohere/    Cohere reranking provider
 │   ├── openai/    OpenAI provider + shared OpenAI-compatible codec
 │   └── openrouter/ OpenRouter provider
 ├── schema/        JSON Schema generation from Go types
@@ -198,7 +267,7 @@ pkg/
 The SDK is built on three layers:
 
 1. **`ai`** -- The functions you call. Provider-agnostic.
-2. **`model`** -- The interfaces providers implement. Four methods for chat, three for embeddings.
+2. **`model`** -- The interfaces providers implement plus normalized request and response types.
 3. **`provider/*`** -- Concrete implementations. OpenRouter reuses the OpenAI codec since they share the same wire format.
 
 ## Adding a Provider

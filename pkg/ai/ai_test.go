@@ -3,9 +3,12 @@ package ai_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/model"
@@ -13,8 +16,9 @@ import (
 
 // mockModel is a minimal model.Model implementation for testing.
 type mockModel struct {
-	generateFn func(ctx context.Context, req *model.Request) (*model.Response, error)
-	streamFn   func(ctx context.Context, req *model.Request) (*model.StreamResponse, error)
+	generateFn             func(ctx context.Context, req *model.Request) (*model.Response, error)
+	streamFn               func(ctx context.Context, req *model.Request) (*model.StreamResponse, error)
+	supportsResponseFormat bool
 }
 
 func (m *mockModel) Provider() string { return "mock" }
@@ -28,6 +32,10 @@ func (m *mockModel) DoStream(ctx context.Context, req *model.Request) (*model.St
 	return m.streamFn(ctx, req)
 }
 
+func (m *mockModel) SupportsResponseFormat(_ *model.ResponseFormat) bool {
+	return m.supportsResponseFormat
+}
+
 // mockEmbeddingModel is a minimal model.EmbeddingModel for testing.
 type mockEmbeddingModel struct {
 	embedFn func(ctx context.Context, texts []string) (*model.EmbedResponse, error)
@@ -39,6 +47,8 @@ func (m *mockEmbeddingModel) ModelID() string  { return "mock-embed" }
 func (m *mockEmbeddingModel) DoEmbed(ctx context.Context, texts []string) (*model.EmbedResponse, error) {
 	return m.embedFn(ctx, texts)
 }
+
+type testContextKey string
 
 func TestGenerateTextBasic(t *testing.T) {
 	mock := &mockModel{
@@ -128,6 +138,27 @@ func TestGenerateTextWithProviderOption(t *testing.T) {
 
 	if result.Metadata.RequestID != "req_1" {
 		t.Errorf("Metadata.RequestID = %q, want req_1", result.Metadata.RequestID)
+	}
+}
+
+func TestGenerateTextWithInvalidProviderOption(t *testing.T) {
+	mock := &mockModel{
+		generateFn: func(_ context.Context, _ *model.Request) (*model.Response, error) {
+			t.Fatal("generateFn should not be called when option resolution fails")
+
+			return nil, nil
+		},
+	}
+
+	_, err := ai.GenerateText(context.Background(), mock,
+		ai.WithPrompt("Hi"),
+		ai.WithProviderOption("openai", "metadata", func() {}),
+	)
+	if err == nil {
+		t.Fatal("expected provider option error")
+	}
+	if !strings.Contains(err.Error(), "provider option openai.metadata") {
+		t.Fatalf("error = %q, want provider option context", err)
 	}
 }
 
@@ -366,7 +397,10 @@ func TestStreamTextBasic(t *testing.T) {
 				if !yield(model.TextDelta{Text: " world"}) {
 					return
 				}
-				if !yield(model.FinishChunk{FinishReason: model.FinishReasonStop}) {
+				if !yield(model.FinishChunk{
+					FinishReason:    model.FinishReasonStop,
+					RawFinishReason: "provider_stop",
+				}) {
 					return
 				}
 				yield(model.UsageChunk{Usage: model.Usage{InputTokens: 5, OutputTokens: 2}})
@@ -409,6 +443,10 @@ func TestStreamTextBasic(t *testing.T) {
 
 	if result.FinishReason != model.FinishReasonStop {
 		t.Errorf("FinishReason = %v, want stop", result.FinishReason)
+	}
+
+	if result.RawFinishReason != "provider_stop" {
+		t.Errorf("RawFinishReason = %q, want provider_stop", result.RawFinishReason)
 	}
 
 	if result.Usage.InputTokens != 5 {
@@ -502,6 +540,91 @@ func TestStreamTextChunks(t *testing.T) {
 	}
 }
 
+func TestStreamTextResultAfterEarlyStop(t *testing.T) {
+	mock := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			stream := func(yield func(model.Chunk) bool) {
+				if !yield(model.TextDelta{Text: "first"}) {
+					return
+				}
+				yield(model.TextDelta{Text: " second"})
+			}
+
+			return &model.StreamResponse{
+				Stream: stream,
+			}, nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(context.Background(), mock, ai.WithPrompt("Hi"))
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	for delta := range streamResult.Text() {
+		if delta == "first" {
+			break
+		}
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Text != "first" {
+		t.Fatalf("result.Text = %q, want first", result.Text)
+	}
+}
+
+func TestStreamTextOnFinishUsesRequestContext(t *testing.T) {
+	ctx := context.WithValue(context.Background(), testContextKey("trace"), "stream-text")
+
+	mock := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "done"}) {
+						return
+					}
+
+					yield(model.FinishChunk{
+						FinishReason:    model.FinishReasonStop,
+						RawFinishReason: "provider_stop",
+					})
+				},
+			}, nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(ctx, mock,
+		ai.WithPrompt("Hi"),
+		ai.WithOnFinish(func(hookCtx context.Context, result *ai.GenerateResult) error {
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-text" {
+				t.Fatalf("hook context value = %v, want stream-text", got)
+			}
+
+			if result.RawFinishReason != "provider_stop" {
+				t.Fatalf("RawFinishReason = %q, want provider_stop", result.RawFinishReason)
+			}
+
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.RawFinishReason != "provider_stop" {
+		t.Fatalf("result.RawFinishReason = %q, want provider_stop", result.RawFinishReason)
+	}
+}
+
 func TestStreamTextModelError(t *testing.T) {
 	mock := &mockModel{
 		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
@@ -522,6 +645,7 @@ func TestGenerateObjectBasic(t *testing.T) {
 	}
 
 	mock := &mockModel{
+		supportsResponseFormat: true,
 		generateFn: func(_ context.Context, req *model.Request) (*model.Response, error) {
 			// Verify JSON schema response format was set.
 			if req.ResponseFormat == nil {
@@ -582,6 +706,7 @@ func TestGenerateObjectInvalidJSON(t *testing.T) {
 	}
 
 	mock := &mockModel{
+		supportsResponseFormat: true,
 		generateFn: func(_ context.Context, _ *model.Request) (*model.Response, error) {
 			return &model.Response{
 				Content:      []model.Content{model.TextContent{Text: "not valid json"}},
@@ -604,6 +729,7 @@ func TestGenerateObjectEmptyResponse(t *testing.T) {
 	}
 
 	mock := &mockModel{
+		supportsResponseFormat: true,
 		generateFn: func(_ context.Context, _ *model.Request) (*model.Response, error) {
 			return &model.Response{
 				Content:      []model.Content{},
@@ -691,6 +817,542 @@ func TestEmbedManyBasic(t *testing.T) {
 
 	if result.Usage.InputTokens != 6 {
 		t.Errorf("InputTokens = %d, want 6", result.Usage.InputTokens)
+	}
+}
+
+func TestGenerateTextRejectsInvalidMaxSteps(t *testing.T) {
+	mock := &mockModel{
+		generateFn: func(_ context.Context, _ *model.Request) (*model.Response, error) {
+			return &model.Response{}, nil
+		},
+	}
+
+	_, err := ai.GenerateText(context.Background(), mock,
+		ai.WithPrompt("hello"),
+		ai.WithMaxSteps(0),
+	)
+	if !errors.Is(err, ai.ErrInvalidMaxSteps) {
+		t.Fatalf("err = %v, want ErrInvalidMaxSteps", err)
+	}
+}
+
+func TestGenerateObjectFallbackUsesToolSchema(t *testing.T) {
+	type Recipe struct {
+		Name string `json:"name"`
+	}
+
+	mock := &mockModel{
+		generateFn: func(_ context.Context, req *model.Request) (*model.Response, error) {
+			if req.ResponseFormat != nil {
+				t.Fatal("response format should not be set for fallback path")
+			}
+
+			if len(req.Tools) != 1 {
+				t.Fatalf("tools length = %d, want 1", len(req.Tools))
+			}
+
+			if req.ToolChoice == nil || req.ToolChoice.ToolName != "structured_output" {
+				t.Fatalf("tool choice = %#v, want structured_output", req.ToolChoice)
+			}
+
+			return &model.Response{
+				Content: []model.Content{
+					model.ToolCallContent{
+						ToolCallID: "call_1",
+						ToolName:   "structured_output",
+						Args:       `{"name":"Soup"}`,
+					},
+				},
+				FinishReason: model.FinishReasonToolCalls,
+			}, nil
+		},
+	}
+
+	result, err := ai.GenerateObject[Recipe](context.Background(), mock,
+		ai.WithPrompt("Give me a recipe"),
+	)
+	if err != nil {
+		t.Fatalf("GenerateObject fallback: %v", err)
+	}
+
+	if result.Object.Name != "Soup" {
+		t.Fatalf("object name = %q, want Soup", result.Object.Name)
+	}
+
+	if result.RawJSON != `{"name":"Soup"}` {
+		t.Fatalf("raw json = %q, want JSON payload", result.RawJSON)
+	}
+}
+
+func TestGenerateObjectFallbackRunsHooks(t *testing.T) {
+	type Recipe struct {
+		Name string `json:"name"`
+	}
+
+	ctx := context.WithValue(context.Background(), testContextKey("trace"), "generate-object")
+	var calls []string
+
+	mock := &mockModel{
+		generateFn: func(hookCtx context.Context, req *model.Request) (*model.Response, error) {
+			if got := hookCtx.Value(testContextKey("trace")); got != "generate-object" {
+				t.Fatalf("generate context value = %v, want generate-object", got)
+			}
+
+			if req.ToolChoice == nil || req.ToolChoice.ToolName != "structured_output" {
+				t.Fatalf("tool choice = %#v, want structured_output", req.ToolChoice)
+			}
+
+			return &model.Response{
+				Content: []model.Content{
+					model.ToolCallContent{
+						ToolCallID: "call_1",
+						ToolName:   "structured_output",
+						Args:       `{"name":"Soup"}`,
+					},
+				},
+				FinishReason: model.FinishReasonToolCalls,
+			}, nil
+		},
+	}
+
+	result, err := ai.GenerateObject[Recipe](ctx, mock,
+		ai.WithPrompt("Give me a recipe"),
+		ai.WithPrepareStep(func(hookCtx context.Context, step int, req *model.Request) error {
+			calls = append(calls, "prepare")
+			if got := hookCtx.Value(testContextKey("trace")); got != "generate-object" {
+				t.Fatalf("prepare context value = %v, want generate-object", got)
+			}
+
+			if step != 0 {
+				t.Fatalf("prepare step = %d, want 0", step)
+			}
+
+			if req.ToolChoice == nil || req.ToolChoice.ToolName != "structured_output" {
+				t.Fatalf("prepare tool choice = %#v, want structured_output", req.ToolChoice)
+			}
+
+			return nil
+		}),
+		ai.WithOnStepFinish(func(hookCtx context.Context, step ai.Step) error {
+			calls = append(calls, "step")
+			if got := hookCtx.Value(testContextKey("trace")); got != "generate-object" {
+				t.Fatalf("step context value = %v, want generate-object", got)
+			}
+
+			if len(step.ToolCalls) != 1 || step.ToolCalls[0].ToolName != "structured_output" {
+				t.Fatalf("step tool calls = %#v, want structured_output", step.ToolCalls)
+			}
+
+			return nil
+		}),
+		ai.WithOnFinish(func(hookCtx context.Context, result *ai.GenerateResult) error {
+			calls = append(calls, "finish")
+			if got := hookCtx.Value(testContextKey("trace")); got != "generate-object" {
+				t.Fatalf("finish context value = %v, want generate-object", got)
+			}
+
+			if len(result.Steps) != 1 || len(result.Steps[0].ToolCalls) != 1 {
+				t.Fatalf("result steps = %#v, want one structured-output step", result.Steps)
+			}
+
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatalf("GenerateObject: %v", err)
+	}
+
+	if result.Object.Name != "Soup" {
+		t.Fatalf("result.Object.Name = %q, want Soup", result.Object.Name)
+	}
+
+	if got := fmt.Sprint(calls); got != "[prepare step finish]" {
+		t.Fatalf("hook calls = %s, want [prepare step finish]", got)
+	}
+}
+
+func TestStreamObjectConsumesUsageBeforeTimeoutCleanup(t *testing.T) {
+	type Recipe struct {
+		Name string `json:"name"`
+	}
+
+	mock := &mockModel{
+		supportsResponseFormat: true,
+		streamFn: func(ctx context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if ctx.Err() != nil {
+						return
+					}
+
+					if !yield(model.TextDelta{Text: `{"name":"Soup"}`}) {
+						return
+					}
+
+					yield(model.UsageChunk{Usage: model.Usage{InputTokens: 3, OutputTokens: 4}})
+				},
+			}, nil
+		},
+	}
+
+	streamResult, err := ai.StreamObject[Recipe](context.Background(), mock,
+		ai.WithPrompt("Give me soup"),
+		ai.WithTimeout(50*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("StreamObject: %v", err)
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Object.Name != "Soup" {
+		t.Fatalf("result.Object.Name = %q, want Soup", result.Object.Name)
+	}
+
+	if result.Usage.InputTokens != 3 || result.Usage.OutputTokens != 4 {
+		t.Fatalf("usage = %+v, want input=3 output=4", result.Usage)
+	}
+}
+
+func TestStreamObjectRunsHooksWithRequestContext(t *testing.T) {
+	type Recipe struct {
+		Name string `json:"name"`
+	}
+
+	ctx := context.WithValue(context.Background(), testContextKey("trace"), "stream-object")
+	var calls []string
+
+	mock := &mockModel{
+		supportsResponseFormat: true,
+		streamFn: func(hookCtx context.Context, req *model.Request) (*model.StreamResponse, error) {
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-object" {
+				t.Fatalf("stream context value = %v, want stream-object", got)
+			}
+
+			if req.ResponseFormat == nil || req.ResponseFormat.Type != "json_schema" {
+				t.Fatalf("response format = %#v, want json_schema", req.ResponseFormat)
+			}
+
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: `{"name":"Soup"}`}) {
+						return
+					}
+
+					if !yield(model.FinishChunk{
+						FinishReason:    model.FinishReasonStop,
+						RawFinishReason: "provider_stop",
+					}) {
+						return
+					}
+
+					yield(model.UsageChunk{Usage: model.Usage{InputTokens: 2, OutputTokens: 3}})
+				},
+			}, nil
+		},
+	}
+
+	streamResult, err := ai.StreamObject[Recipe](ctx, mock,
+		ai.WithPrompt("Give me a recipe"),
+		ai.WithPrepareStep(func(hookCtx context.Context, step int, req *model.Request) error {
+			calls = append(calls, "prepare")
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-object" {
+				t.Fatalf("prepare context value = %v, want stream-object", got)
+			}
+
+			if step != 0 {
+				t.Fatalf("prepare step = %d, want 0", step)
+			}
+
+			if req.ResponseFormat == nil || req.ResponseFormat.Type != "json_schema" {
+				t.Fatalf("prepare response format = %#v, want json_schema", req.ResponseFormat)
+			}
+
+			return nil
+		}),
+		ai.WithOnStepFinish(func(hookCtx context.Context, step ai.Step) error {
+			calls = append(calls, "step")
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-object" {
+				t.Fatalf("step context value = %v, want stream-object", got)
+			}
+
+			if step.Text != `{"name":"Soup"}` {
+				t.Fatalf("step.Text = %q, want JSON body", step.Text)
+			}
+
+			if step.RawFinishReason != "provider_stop" {
+				t.Fatalf("step.RawFinishReason = %q, want provider_stop", step.RawFinishReason)
+			}
+
+			return nil
+		}),
+		ai.WithOnFinish(func(hookCtx context.Context, result *ai.GenerateResult) error {
+			calls = append(calls, "finish")
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-object" {
+				t.Fatalf("finish context value = %v, want stream-object", got)
+			}
+
+			if result.Text != `{"name":"Soup"}` {
+				t.Fatalf("result.Text = %q, want JSON body", result.Text)
+			}
+
+			if result.RawFinishReason != "provider_stop" {
+				t.Fatalf("result.RawFinishReason = %q, want provider_stop", result.RawFinishReason)
+			}
+
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatalf("StreamObject: %v", err)
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Object.Name != "Soup" {
+		t.Fatalf("result.Object.Name = %q, want Soup", result.Object.Name)
+	}
+
+	if got := fmt.Sprint(calls); got != "[prepare step finish]" {
+		t.Fatalf("hook calls = %s, want [prepare step finish]", got)
+	}
+}
+
+func TestExtractJSONMiddleware(t *testing.T) {
+	base := &mockModel{
+		generateFn: func(_ context.Context, _ *model.Request) (*model.Response, error) {
+			return &model.Response{
+				Content: []model.Content{
+					model.TextContent{Text: "```json\n{\"ok\":true}\n```"},
+				},
+				FinishReason: model.FinishReasonStop,
+			}, nil
+		},
+	}
+
+	modelWithMiddleware := ai.WrapLanguageModel(base, ai.ExtractJSONMiddleware())
+	result, err := ai.GenerateText(context.Background(), modelWithMiddleware, ai.WithPrompt("Hi"))
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+
+	if result.Text != `{"ok":true}` {
+		t.Fatalf("result.Text = %q, want stripped JSON", result.Text)
+	}
+}
+
+func TestExtractJSONMiddlewareStreamYieldsBeforeCompletion(t *testing.T) {
+	continueStream := make(chan struct{})
+	base := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "```json\n{\"ok\":"}) {
+						return
+					}
+
+					<-continueStream
+
+					if !yield(model.TextDelta{Text: "true}\n```"}) {
+						return
+					}
+
+					yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
+				},
+			}, nil
+		},
+	}
+
+	modelWithMiddleware := ai.WrapLanguageModel(base, ai.ExtractJSONMiddleware())
+	streamResult, err := ai.StreamText(context.Background(), modelWithMiddleware, ai.WithPrompt("Hi"))
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	deltas := make(chan string, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for delta := range streamResult.Text() {
+			deltas <- delta
+		}
+	}()
+
+	select {
+	case delta := <-deltas:
+		if delta != `{"ok":` {
+			t.Fatalf("first delta = %q, want JSON body prefix", delta)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for streamed JSON delta")
+	}
+
+	close(continueStream)
+	<-done
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Text != `{"ok":true}` {
+		t.Fatalf("result.Text = %q, want stripped JSON", result.Text)
+	}
+}
+
+func TestExtractReasoningMiddlewareStreamYieldsBeforeCompletion(t *testing.T) {
+	continueStream := make(chan struct{})
+	base := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "Answer: "}) {
+						return
+					}
+
+					<-continueStream
+
+					if !yield(model.TextDelta{Text: "<reasoning>internal</reasoning>done"}) {
+						return
+					}
+
+					yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
+				},
+			}, nil
+		},
+	}
+
+	modelWithMiddleware := ai.WrapLanguageModel(base, ai.ExtractReasoningMiddleware())
+	streamResult, err := ai.StreamText(context.Background(), modelWithMiddleware, ai.WithPrompt("Hi"))
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	deltas := make(chan string, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for delta := range streamResult.Text() {
+			deltas <- delta
+		}
+	}()
+
+	select {
+	case delta := <-deltas:
+		if delta != "Answer: " {
+			t.Fatalf("first delta = %q, want text before reasoning block", delta)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for streamed text delta")
+	}
+
+	close(continueStream)
+	<-done
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Text != "Answer: done" {
+		t.Fatalf("result.Text = %q, want Answer: done", result.Text)
+	}
+
+	if result.Reasoning != "internal" {
+		t.Fatalf("result.Reasoning = %q, want internal", result.Reasoning)
+	}
+}
+
+func TestSimulateStreamingMiddlewarePreservesRawFinishReason(t *testing.T) {
+	base := &mockModel{
+		generateFn: func(_ context.Context, _ *model.Request) (*model.Response, error) {
+			return &model.Response{
+				Content: []model.Content{
+					model.TextContent{Text: "done"},
+				},
+				FinishReason:    model.FinishReasonStop,
+				RawFinishReason: "provider_stop",
+			}, nil
+		},
+	}
+
+	modelWithMiddleware := ai.WrapLanguageModel(base, ai.SimulateStreamingMiddleware(0))
+
+	streamResult, err := ai.StreamText(context.Background(), modelWithMiddleware, ai.WithPrompt("Hi"))
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.RawFinishReason != "provider_stop" {
+		t.Fatalf("RawFinishReason = %q, want provider_stop", result.RawFinishReason)
+	}
+}
+
+func TestDefaultSettingsMiddlewareMergesProviderOptions(t *testing.T) {
+	base := &mockModel{
+		generateFn: func(_ context.Context, req *model.Request) (*model.Response, error) {
+			metadata, ok := req.ProviderOptions.Lookup("openai", "metadata")
+			if !ok {
+				t.Fatal("openai metadata default missing")
+			}
+
+			if string(metadata) != `{"trace_id":"default-trace"}` {
+				t.Fatalf("metadata = %s, want default metadata", metadata)
+			}
+
+			reasoning, ok := req.ProviderOptions.Lookup("openai", "reasoning_effort")
+			if !ok {
+				t.Fatal("openai reasoning_effort override missing")
+			}
+
+			if string(reasoning) != `"high"` {
+				t.Fatalf("reasoning_effort = %s, want \"high\"", reasoning)
+			}
+
+			anthropicMetadata, ok := req.ProviderOptions.Lookup("anthropic", "metadata")
+			if !ok {
+				t.Fatal("anthropic metadata default missing")
+			}
+
+			if string(anthropicMetadata) != `{"trace_id":"anthropic-trace"}` {
+				t.Fatalf("anthropic metadata = %s, want anthropic default", anthropicMetadata)
+			}
+
+			return &model.Response{
+				Content:      []model.Content{model.TextContent{Text: "ok"}},
+				FinishReason: model.FinishReasonStop,
+			}, nil
+		},
+	}
+
+	modelWithMiddleware := ai.WrapLanguageModel(base, ai.DefaultSettingsMiddleware(model.Request{
+		ProviderOptions: model.ProviderOptions{
+			"openai": {
+				"metadata": json.RawMessage(`{"trace_id":"default-trace"}`),
+			},
+			"anthropic": {
+				"metadata": json.RawMessage(`{"trace_id":"anthropic-trace"}`),
+			},
+		},
+	}))
+
+	_, err := ai.GenerateText(context.Background(), modelWithMiddleware,
+		ai.WithPrompt("Hi"),
+		ai.WithProviderOption("openai", "reasoning_effort", "high"),
+	)
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
 	}
 }
 

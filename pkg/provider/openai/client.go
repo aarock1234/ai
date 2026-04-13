@@ -52,7 +52,7 @@ func DoRequest(ctx context.Context, cfg *ClientConfig, req *ChatRequest) (*ChatR
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	setHeaders(httpReq, cfg)
+	setHeaders(httpReq, cfg, req.Headers)
 
 	resp, err := cfg.httpClient().Do(httpReq)
 	if err != nil {
@@ -94,7 +94,7 @@ func DoStreamRequest(ctx context.Context, cfg *ClientConfig, req *ChatRequest) (
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	setHeaders(httpReq, cfg)
+	setHeaders(httpReq, cfg, req.Headers)
 
 	resp, err := cfg.httpClient().Do(httpReq)
 	if err != nil {
@@ -116,7 +116,7 @@ func DoStreamRequest(ctx context.Context, cfg *ClientConfig, req *ChatRequest) (
 }
 
 // setHeaders applies auth and content-type headers to the request.
-func setHeaders(req *http.Request, cfg *ClientConfig) {
+func setHeaders(req *http.Request, cfg *ClientConfig, extra http.Header) {
 	req.Header.Set("Content-Type", "application/json")
 
 	if cfg.APIKey != "" {
@@ -124,6 +124,12 @@ func setHeaders(req *http.Request, cfg *ClientConfig) {
 	}
 
 	for key, values := range cfg.ExtraHeaders {
+		for _, v := range values {
+			req.Header.Set(key, v)
+		}
+	}
+
+	for key, values := range extra {
 		for _, v := range values {
 			req.Header.Set(key, v)
 		}

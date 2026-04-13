@@ -51,6 +51,30 @@ func (p *Provider) Embedding(modelID string) model.EmbeddingModel {
 	}
 }
 
+// Image creates an image model for the given model ID.
+func (p *Provider) Image(modelID string) model.ImageModel {
+	return &ImageModel{
+		modelID:      modelID,
+		clientConfig: p.clientConfig,
+	}
+}
+
+// Transcription creates a transcription model for the given model ID.
+func (p *Provider) Transcription(modelID string) model.TranscriptionModel {
+	return &TranscriptionModel{
+		modelID:      modelID,
+		clientConfig: p.clientConfig,
+	}
+}
+
+// Speech creates a speech model for the given model ID.
+func (p *Provider) Speech(modelID string) model.SpeechModel {
+	return &SpeechModel{
+		modelID:      modelID,
+		clientConfig: p.clientConfig,
+	}
+}
+
 // Chat creates a language model for OpenAI chat completions. The
 // model ID should be a valid OpenAI model name (e.g. "gpt-5.4",
 // ""). If no API key is provided via WithAPIKey, the
@@ -84,6 +108,54 @@ func Embedding(modelID string, opts ...Option) model.EmbeddingModel {
 	}
 
 	return &EmbeddingModel{
+		modelID:      modelID,
+		clientConfig: buildClientConfig(&cfg),
+	}
+}
+
+// Image creates an image model for OpenAI image generation.
+func Image(modelID string, opts ...Option) model.ImageModel {
+	cfg := config{
+		baseURL: defaultBaseURL,
+		apiKey:  os.Getenv("OPENAI_API_KEY"),
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &ImageModel{
+		modelID:      modelID,
+		clientConfig: buildClientConfig(&cfg),
+	}
+}
+
+// Transcription creates a speech-to-text model for OpenAI audio APIs.
+func Transcription(modelID string, opts ...Option) model.TranscriptionModel {
+	cfg := config{
+		baseURL: defaultBaseURL,
+		apiKey:  os.Getenv("OPENAI_API_KEY"),
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &TranscriptionModel{
+		modelID:      modelID,
+		clientConfig: buildClientConfig(&cfg),
+	}
+}
+
+// Speech creates a text-to-speech model for OpenAI audio APIs.
+func Speech(modelID string, opts ...Option) model.SpeechModel {
+	cfg := config{
+		baseURL: defaultBaseURL,
+		apiKey:  os.Getenv("OPENAI_API_KEY"),
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &SpeechModel{
 		modelID:      modelID,
 		clientConfig: buildClientConfig(&cfg),
 	}

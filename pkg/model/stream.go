@@ -21,6 +21,13 @@ type TextDelta struct {
 
 func (TextDelta) chunkType() {}
 
+// ReasoningDelta is a partial reasoning segment from a streaming response.
+type ReasoningDelta struct {
+	Text string
+}
+
+func (ReasoningDelta) chunkType() {}
+
 // ToolCallDelta is a partial tool call from a streaming response.
 // Tool calls may arrive across multiple deltas; the consumer
 // accumulates them by ToolCallID.
@@ -34,7 +41,8 @@ func (ToolCallDelta) chunkType() {}
 
 // FinishChunk signals that the model has stopped generating.
 type FinishChunk struct {
-	FinishReason FinishReason
+	FinishReason    FinishReason
+	RawFinishReason string
 }
 
 func (FinishChunk) chunkType() {}

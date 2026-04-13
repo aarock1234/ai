@@ -97,7 +97,8 @@ func DecodeStream(r io.Reader) iter.Seq[model.Chunk] {
 			// Yield finish reason.
 			if choice.FinishReason != nil && *choice.FinishReason != "" {
 				if !yield(model.FinishChunk{
-					FinishReason: mapFinishReason(*choice.FinishReason),
+					FinishReason:    mapFinishReason(*choice.FinishReason),
+					RawFinishReason: *choice.FinishReason,
 				}) {
 					return
 				}

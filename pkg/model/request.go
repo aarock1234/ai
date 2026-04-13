@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // ProviderOptions carries provider-scoped request options. The first key
 // is the provider name (e.g. "anthropic", "openai"); the nested option
@@ -82,6 +85,22 @@ type Request struct {
 	// TopP controls nucleus sampling. Nil means use provider default.
 	TopP *float64
 
+	// TopK limits sampling to the K most likely tokens. Nil means use
+	// provider default.
+	TopK *int
+
+	// PresencePenalty discourages repeating existing topics. Nil means
+	// use provider default.
+	PresencePenalty *float64
+
+	// FrequencyPenalty discourages repeating existing tokens. Nil means
+	// use provider default.
+	FrequencyPenalty *float64
+
+	// Seed requests deterministic sampling when supported by the
+	// provider. Nil means use provider default.
+	Seed *int64
+
 	// StopSequences causes the model to stop generating when any of
 	// these strings are produced.
 	StopSequences []string
@@ -89,11 +108,18 @@ type Request struct {
 	// Tools describes the tools available to the model.
 	Tools []ToolDefinition
 
+	// ActiveTools limits the set of tools exposed for this request.
+	// When empty, all tools in Tools are active.
+	ActiveTools []string
+
 	// ToolChoice controls how the model selects tools.
 	ToolChoice *ToolChoice
 
 	// ResponseFormat requests a specific output format from the model.
 	ResponseFormat *ResponseFormat
+
+	// Headers are additional HTTP headers sent with this request.
+	Headers http.Header
 
 	// ProviderOptions carries provider-specific request options keyed by
 	// provider name.
@@ -176,6 +202,7 @@ type ToolDefinition struct {
 	Name        string
 	Description string
 	InputSchema json.RawMessage
+	Strict      bool
 }
 
 // ToolChoice controls how the model selects tools.
