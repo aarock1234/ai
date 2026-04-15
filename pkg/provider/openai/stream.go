@@ -9,12 +9,20 @@ import (
 	"github.com/aarock1234/ai/pkg/model"
 )
 
+// toolCallState tracks the ID and name for a streamed tool call so that
+// subsequent deltas (which carry only an index) can emit the full identity.
+type toolCallState struct {
+	id   string
+	name string
+}
+
 // DecodeStream parses an SSE stream of OpenAI chat completion chunks
 // and yields normalized model.Chunk values. The caller ranges over
 // the returned iterator to consume the stream.
 func DecodeStream(r io.Reader) iter.Seq[model.Chunk] {
 	return func(yield func(model.Chunk) bool) {
 		var metadata model.ProviderMetadata
+		toolCalls := make(map[int]toolCallState)
 
 		for event := range sse.Read(r) {
 			if event.Data == "" {
@@ -83,11 +91,22 @@ func DecodeStream(r io.Reader) iter.Seq[model.Chunk] {
 				}
 			}
 
-			// Yield tool call deltas.
+			// Yield tool call deltas. OpenAI sends ID and Function.Name
+			// only on the first delta for each tool call; subsequent
+			// deltas identify the call by Index alone. We track state
+			// by index so every emitted delta carries the full identity.
 			for _, tc := range choice.Delta.ToolCalls {
+				if tc.ID != "" {
+					toolCalls[tc.Index] = toolCallState{
+						id:   tc.ID,
+						name: tc.Function.Name,
+					}
+				}
+
+				state := toolCalls[tc.Index]
 				if !yield(model.ToolCallDelta{
-					ToolCallID: tc.ID,
-					ToolName:   tc.Function.Name,
+					ToolCallID: state.id,
+					ToolName:   state.name,
 					ArgsJSON:   tc.Function.Arguments,
 				}) {
 					return

@@ -59,6 +59,22 @@ type Step struct {
 	Warnings        []string
 }
 
+// toolLoopState carries multi-step accumulation data shared between
+// the tool-loop stream iterator and the StreamResult that wraps it.
+// The stream function populates steps as they complete; the
+// StreamResult uses this data to build a multi-step GenerateResult.
+type toolLoopState struct {
+	steps []Step
+	usage Usage
+	err   error
+}
+
+// recordStep appends a completed step and aggregates its usage.
+func (s *toolLoopState) recordStep(step Step) {
+	s.steps = append(s.steps, step)
+	addUsage(&s.usage, step.Usage)
+}
+
 // StreamResult wraps a streaming response and provides iterators for
 // consuming the stream. It accumulates chunks internally so that
 // Result() can return the final GenerateResult after the stream is
@@ -68,6 +84,7 @@ type StreamResult struct {
 	cancel   context.CancelFunc
 	metadata model.ProviderMetadata
 	onFinish []finishHook
+	toolLoop *toolLoopState
 
 	mu       sync.Mutex
 	consumed bool
@@ -77,12 +94,15 @@ type StreamResult struct {
 
 // newStreamResult creates a StreamResult from a model chunk iterator.
 // If cancel is non-nil it is called when the stream is fully consumed.
-func newStreamResult(stream iter.Seq[model.Chunk], metadata model.ProviderMetadata, cancel context.CancelFunc, onFinish []finishHook) *StreamResult {
+// When toolLoop is non-nil the result is built from the multi-step
+// state instead of the single-stream accumulators.
+func newStreamResult(stream iter.Seq[model.Chunk], metadata model.ProviderMetadata, cancel context.CancelFunc, onFinish []finishHook, toolLoop *toolLoopState) *StreamResult {
 	return &StreamResult{
 		stream:   stream,
 		cancel:   cancel,
 		metadata: metadata.Clone(),
 		onFinish: append([]finishHook(nil), onFinish...),
+		toolLoop: toolLoop,
 	}
 }
 
@@ -169,28 +189,43 @@ func (s *StreamResult) consume(yield func(model.Chunk) bool) {
 	toolCallNames := make(map[string]string)
 
 	defer func() {
-		for id, args := range toolCallArgs {
-			toolCalls = append(toolCalls, ToolCall{
-				ToolCallID: id,
-				ToolName:   toolCallNames[id],
-				Args:       []byte(args.String()),
-			})
-		}
+		var result *GenerateResult
 
-		result := &GenerateResult{
-			Text:            textBuilder.String(),
-			Reasoning:       reasoningBuilder.String(),
-			ToolCalls:       toolCalls,
-			FinishReason:    finishReason,
-			RawFinishReason: rawFinishReason,
-			Usage:           usage,
-			Metadata:        s.Metadata(),
-			Warnings:        warnings,
+		if s.toolLoop != nil {
+			// Multi-step tool loop: the stream function recorded all
+			// steps (including the final one) into the shared state.
+			// Build the result from that data.
+			result = buildResult(s.toolLoop.steps, s.toolLoop.usage)
+			result.Metadata = s.Metadata()
+		} else {
+			// Single-step: assemble tool calls from accumulated deltas
+			// and build the result from stream accumulators.
+			for id, args := range toolCallArgs {
+				toolCalls = append(toolCalls, ToolCall{
+					ToolCallID: id,
+					ToolName:   toolCallNames[id],
+					Args:       []byte(args.String()),
+				})
+			}
+
+			result = &GenerateResult{
+				Text:            textBuilder.String(),
+				Reasoning:       reasoningBuilder.String(),
+				ToolCalls:       toolCalls,
+				FinishReason:    finishReason,
+				RawFinishReason: rawFinishReason,
+				Usage:           usage,
+				Metadata:        s.Metadata(),
+				Warnings:        warnings,
+			}
 		}
 
 		s.mu.Lock()
 		s.consumed = true
 		s.final = result
+		if s.toolLoop != nil && s.toolLoop.err != nil {
+			s.err = s.toolLoop.err
+		}
 		s.mu.Unlock()
 
 		if err := runFinishHooks(s.onFinish, result); err != nil {
@@ -234,6 +269,18 @@ func (s *StreamResult) consume(yield func(model.Chunk) bool) {
 			return
 		}
 	}
+}
+
+// addUsage accumulates step usage into a running total.
+func addUsage(total *Usage, step Usage) {
+	total.InputTokens += step.InputTokens
+	total.OutputTokens += step.OutputTokens
+	total.CachedInputTokens += step.CachedInputTokens
+	total.ReasoningTokens += step.ReasoningTokens
+	total.ImageInputTokens += step.ImageInputTokens
+	total.ImageOutputTokens += step.ImageOutputTokens
+	total.AudioInputTokens += step.AudioInputTokens
+	total.AudioOutputTokens += step.AudioOutputTokens
 }
 
 // ObjectResult is the result of a GenerateObject call.

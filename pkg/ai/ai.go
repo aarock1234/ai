@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/aarock1234/ai/internal/apierror"
@@ -53,14 +55,7 @@ func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*Generate
 
 		stepResult := extractStep(resp)
 		steps = append(steps, stepResult)
-		totalUsage.InputTokens += stepResult.Usage.InputTokens
-		totalUsage.OutputTokens += stepResult.Usage.OutputTokens
-		totalUsage.CachedInputTokens += stepResult.Usage.CachedInputTokens
-		totalUsage.ReasoningTokens += stepResult.Usage.ReasoningTokens
-		totalUsage.ImageInputTokens += stepResult.Usage.ImageInputTokens
-		totalUsage.ImageOutputTokens += stepResult.Usage.ImageOutputTokens
-		totalUsage.AudioInputTokens += stepResult.Usage.AudioInputTokens
-		totalUsage.AudioOutputTokens += stepResult.Usage.AudioOutputTokens
+		addUsage(&totalUsage, stepResult.Usage)
 
 		for _, hook := range cfg.onStepFinish {
 			if err := hook(ctx, stepResult); err != nil {
@@ -92,6 +87,12 @@ func GenerateText(ctx context.Context, m model.Model, opts ...Option) (*Generate
 // returns a StreamResult whose Text() method yields text deltas as
 // an iterator. The stream must be consumed by ranging over Text() or
 // calling Result().
+//
+// When tools are provided and WithMaxSteps is greater than 1,
+// StreamText runs the same automatic tool loop as GenerateText:
+// after each streamed step that finishes with tool calls, it executes
+// the tools, feeds results back to the model, and streams the next
+// step — all transparently through a single StreamResult.
 func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResult, error) {
 	cfg, err := resolveConfig(opts)
 	if err != nil {
@@ -104,7 +105,19 @@ func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResu
 	}
 
 	req := buildRequest(cfg)
+	toolMap := buildToolMap(cfg.tools)
+	finishHooks := bindFinishHooks(ctx, cfg.onFinish)
 
+	// Multi-step tool loop: build a stream that chains provider
+	// streams across steps, executing tools between them.
+	if len(toolMap) > 0 && cfg.maxSteps > 1 {
+		state := &toolLoopState{}
+		stream := streamToolLoop(ctx, m, req, cfg, toolMap, state)
+
+		return newStreamResult(stream, model.ProviderMetadata{}, cancel, finishHooks, state), nil
+	}
+
+	// Single-step: stream one provider response directly.
 	for _, hook := range cfg.prepareStep {
 		if err := hook(ctx, 0, req); err != nil {
 			if cancel != nil {
@@ -124,7 +137,7 @@ func StreamText(ctx context.Context, m model.Model, opts ...Option) (*StreamResu
 		return nil, err
 	}
 
-	return newStreamResult(streamResp.Stream, streamResp.Metadata, cancel, bindFinishHooks(ctx, cfg.onFinish)), nil
+	return newStreamResult(streamResp.Stream, streamResp.Metadata, cancel, finishHooks, nil), nil
 }
 
 // resolveConfig applies options to a config with sensible defaults.
@@ -581,6 +594,134 @@ func doStream(ctx context.Context, m model.Model, req *model.Request, maxRetries
 	}
 
 	return nil, lastErr
+}
+
+// streamToolLoop returns a stream iterator that transparently chains
+// multiple provider streams across tool-loop steps. For each step it
+// starts a new stream, yields all chunks to the caller, and — when
+// the step finishes with tool calls — executes the tools, appends
+// the results to the conversation, and continues with the next step.
+//
+// The shared toolLoopState is populated with completed steps so that
+// StreamResult can build the correct multi-step GenerateResult.
+func streamToolLoop(ctx context.Context, m model.Model, req *model.Request, cfg *config, toolMap map[string]Tool, state *toolLoopState) iter.Seq[model.Chunk] {
+	return func(yield func(model.Chunk) bool) {
+		for step := range cfg.maxSteps {
+			for _, hook := range cfg.prepareStep {
+				if err := hook(ctx, step, req); err != nil {
+					state.err = fmt.Errorf("prepare step %d: %w", step, err)
+
+					return
+				}
+			}
+
+			streamResp, err := doStream(ctx, m, req, cfg.maxRetries)
+			if err != nil {
+				state.err = fmt.Errorf("step %d: %w", step, err)
+
+				return
+			}
+
+			// Accumulate this step's data from the stream while
+			// forwarding every chunk to the caller.
+			var (
+				textBuilder      strings.Builder
+				reasoningBuilder strings.Builder
+				finishReason     model.FinishReason
+				rawFinishReason  string
+				stepUsage        Usage
+				stepMetadata     = streamResp.Metadata.Clone()
+				warnings         []string
+			)
+
+			toolCallArgs := make(map[string]*strings.Builder)
+			toolCallNames := make(map[string]string)
+
+			for chunk := range streamResp.Stream {
+				switch c := chunk.(type) {
+				case model.TextDelta:
+					textBuilder.WriteString(c.Text)
+				case model.ReasoningDelta:
+					reasoningBuilder.WriteString(c.Text)
+				case model.ToolCallDelta:
+					if _, ok := toolCallArgs[c.ToolCallID]; !ok {
+						toolCallArgs[c.ToolCallID] = &strings.Builder{}
+					}
+					toolCallArgs[c.ToolCallID].WriteString(c.ArgsJSON)
+					if c.ToolName != "" {
+						toolCallNames[c.ToolCallID] = c.ToolName
+					}
+				case model.FinishChunk:
+					finishReason = c.FinishReason
+					rawFinishReason = c.RawFinishReason
+					if rawFinishReason == "" {
+						rawFinishReason = string(c.FinishReason)
+					}
+				case model.UsageChunk:
+					stepUsage = c.Usage
+				case model.ProviderMetadataChunk:
+					stepMetadata = c.Metadata.Clone()
+				}
+
+				if !yield(chunk) {
+					return
+				}
+			}
+
+			// Assemble the completed step.
+			var toolCalls []ToolCall
+			for id, args := range toolCallArgs {
+				toolCalls = append(toolCalls, ToolCall{
+					ToolCallID: id,
+					ToolName:   toolCallNames[id],
+					Args:       []byte(args.String()),
+				})
+			}
+
+			stepResult := Step{
+				Text:            textBuilder.String(),
+				Reasoning:       reasoningBuilder.String(),
+				ToolCalls:       toolCalls,
+				FinishReason:    finishReason,
+				RawFinishReason: rawFinishReason,
+				Usage:           stepUsage,
+				Metadata:        stepMetadata,
+				Warnings:        warnings,
+			}
+
+			// Fire step hooks.
+			for _, hook := range cfg.onStepFinish {
+				if err := hook(ctx, stepResult); err != nil {
+					state.err = fmt.Errorf("on step finish %d: %w", step, err)
+					state.recordStep(stepResult)
+
+					return
+				}
+			}
+
+			// Check custom stop conditions.
+			if shouldStop(cfg.stopWhen, stepResult) {
+				state.recordStep(stepResult)
+
+				return
+			}
+
+			// No tool calls or no tools → final step.
+			if finishReason != model.FinishReasonToolCalls || len(toolMap) == 0 {
+				state.recordStep(stepResult)
+
+				return
+			}
+
+			// Execute tools and record the step with results.
+			toolResults := executeToolCalls(ctx, stepResult.ToolCalls, toolMap)
+			stepResult.ToolResults = toolResults
+			state.recordStep(stepResult)
+
+			// Append assistant + tool messages for the next iteration.
+			req.Messages = appendToolMessages(req.Messages, stepResult, toolResults)
+		}
+	}
 }
 
 func isRetryableError(err error) bool {

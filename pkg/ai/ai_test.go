@@ -638,6 +638,446 @@ func TestStreamTextModelError(t *testing.T) {
 	}
 }
 
+func TestStreamTextToolLoop(t *testing.T) {
+	streamCallCount := 0
+
+	mock := &mockModel{
+		streamFn: func(_ context.Context, req *model.Request) (*model.StreamResponse, error) {
+			streamCallCount++
+
+			if streamCallCount == 1 {
+				// Step 1: model streams a tool call.
+				return &model.StreamResponse{
+					Stream: func(yield func(model.Chunk) bool) {
+						if !yield(model.ToolCallDelta{
+							ToolCallID: "call_1",
+							ToolName:   "get_weather",
+							ArgsJSON:   `{"city":`,
+						}) {
+							return
+						}
+						if !yield(model.ToolCallDelta{
+							ToolCallID: "call_1",
+							ToolName:   "get_weather",
+							ArgsJSON:   `"NYC"}`,
+						}) {
+							return
+						}
+						if !yield(model.FinishChunk{
+							FinishReason:    model.FinishReasonToolCalls,
+							RawFinishReason: "tool_calls",
+						}) {
+							return
+						}
+						yield(model.UsageChunk{Usage: model.Usage{InputTokens: 10, OutputTokens: 5}})
+					},
+				}, nil
+			}
+
+			// Step 2: verify tool result was appended, stream final answer.
+			lastMsg := req.Messages[len(req.Messages)-1]
+			if lastMsg.Role != model.RoleTool {
+				t.Errorf("step 2: last message role = %v, want tool", lastMsg.Role)
+			}
+
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "It's sunny"}) {
+						return
+					}
+					if !yield(model.TextDelta{Text: " in NYC!"}) {
+						return
+					}
+					if !yield(model.FinishChunk{
+						FinishReason:    model.FinishReasonStop,
+						RawFinishReason: "stop",
+					}) {
+						return
+					}
+					yield(model.UsageChunk{Usage: model.Usage{InputTokens: 20, OutputTokens: 10}})
+				},
+			}, nil
+		},
+	}
+
+	weatherTool := ai.Tool{
+		Name:        "get_weather",
+		Description: "Get current weather",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}}}`),
+		Execute: func(_ context.Context, input json.RawMessage) (string, error) {
+			var args struct {
+				City string `json:"city"`
+			}
+			if err := json.Unmarshal(input, &args); err != nil {
+				return "", err
+			}
+
+			return fmt.Sprintf("Sunny, 72°F in %s", args.City), nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(context.Background(), mock,
+		ai.WithPrompt("What's the weather in NYC?"),
+		ai.WithTools(weatherTool),
+		ai.WithMaxSteps(3),
+	)
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	// Collect text deltas from the stream.
+	var collected string
+	for delta := range streamResult.Text() {
+		collected += delta
+	}
+
+	if collected != "It's sunny in NYC!" {
+		t.Errorf("collected text = %q, want %q", collected, "It's sunny in NYC!")
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if streamCallCount != 2 {
+		t.Errorf("stream called %d times, want 2", streamCallCount)
+	}
+
+	if result.Text != "It's sunny in NYC!" {
+		t.Errorf("result.Text = %q, want %q", result.Text, "It's sunny in NYC!")
+	}
+
+	if result.FinishReason != model.FinishReasonStop {
+		t.Errorf("FinishReason = %v, want stop", result.FinishReason)
+	}
+
+	if len(result.Steps) != 2 {
+		t.Fatalf("Steps = %d, want 2", len(result.Steps))
+	}
+
+	if result.Steps[0].FinishReason != model.FinishReasonToolCalls {
+		t.Errorf("Steps[0].FinishReason = %v, want tool_calls", result.Steps[0].FinishReason)
+	}
+
+	if result.Steps[1].FinishReason != model.FinishReasonStop {
+		t.Errorf("Steps[1].FinishReason = %v, want stop", result.Steps[1].FinishReason)
+	}
+
+	if result.Usage.InputTokens != 30 {
+		t.Errorf("total InputTokens = %d, want 30", result.Usage.InputTokens)
+	}
+
+	if result.Usage.OutputTokens != 15 {
+		t.Errorf("total OutputTokens = %d, want 15", result.Usage.OutputTokens)
+	}
+
+	if len(result.ToolResults) != 1 {
+		t.Fatalf("ToolResults = %d, want 1", len(result.ToolResults))
+	}
+
+	if result.ToolResults[0].IsError {
+		t.Error("tool result should not be an error")
+	}
+
+	if !strings.Contains(result.ToolResults[0].Content, "Sunny") {
+		t.Errorf("tool result content = %q, want weather string", result.ToolResults[0].Content)
+	}
+}
+
+func TestStreamTextToolLoopResultWithoutConsuming(t *testing.T) {
+	// Verify that calling Result() directly (without ranging Text())
+	// still runs the full tool loop.
+	streamCallCount := 0
+
+	mock := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			streamCallCount++
+
+			if streamCallCount == 1 {
+				return &model.StreamResponse{
+					Stream: func(yield func(model.Chunk) bool) {
+						if !yield(model.ToolCallDelta{
+							ToolCallID: "call_1",
+							ToolName:   "ping",
+							ArgsJSON:   `{}`,
+						}) {
+							return
+						}
+						yield(model.FinishChunk{FinishReason: model.FinishReasonToolCalls})
+					},
+				}, nil
+			}
+
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "pong"}) {
+						return
+					}
+					yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
+				},
+			}, nil
+		},
+	}
+
+	pingTool := ai.Tool{
+		Name: "ping",
+		Execute: func(_ context.Context, _ json.RawMessage) (string, error) {
+			return "pong", nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(context.Background(), mock,
+		ai.WithPrompt("Ping"),
+		ai.WithTools(pingTool),
+		ai.WithMaxSteps(3),
+	)
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	// Call Result() directly without consuming Text().
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Text != "pong" {
+		t.Errorf("result.Text = %q, want pong", result.Text)
+	}
+
+	if streamCallCount != 2 {
+		t.Errorf("stream called %d times, want 2", streamCallCount)
+	}
+
+	if len(result.Steps) != 2 {
+		t.Errorf("Steps = %d, want 2", len(result.Steps))
+	}
+}
+
+func TestStreamTextToolLoopHooksAndPrepareStep(t *testing.T) {
+	ctx := context.WithValue(context.Background(), testContextKey("trace"), "stream-tool-loop")
+	var hookCalls []string
+
+	streamCallCount := 0
+	mock := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			streamCallCount++
+
+			if streamCallCount == 1 {
+				return &model.StreamResponse{
+					Stream: func(yield func(model.Chunk) bool) {
+						if !yield(model.ToolCallDelta{
+							ToolCallID: "call_1",
+							ToolName:   "echo",
+							ArgsJSON:   `{"msg":"hi"}`,
+						}) {
+							return
+						}
+						yield(model.FinishChunk{FinishReason: model.FinishReasonToolCalls})
+					},
+				}, nil
+			}
+
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "done"}) {
+						return
+					}
+					yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
+				},
+			}, nil
+		},
+	}
+
+	echoTool := ai.Tool{
+		Name: "echo",
+		Execute: func(_ context.Context, input json.RawMessage) (string, error) {
+			return string(input), nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(ctx, mock,
+		ai.WithPrompt("echo"),
+		ai.WithTools(echoTool),
+		ai.WithMaxSteps(3),
+		ai.WithPrepareStep(func(hookCtx context.Context, step int, _ *model.Request) error {
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-tool-loop" {
+				t.Fatalf("prepare context = %v, want stream-tool-loop", got)
+			}
+			hookCalls = append(hookCalls, fmt.Sprintf("prepare:%d", step))
+
+			return nil
+		}),
+		ai.WithOnStepFinish(func(hookCtx context.Context, step ai.Step) error {
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-tool-loop" {
+				t.Fatalf("step context = %v, want stream-tool-loop", got)
+			}
+			hookCalls = append(hookCalls, fmt.Sprintf("step:%s", step.FinishReason))
+
+			return nil
+		}),
+		ai.WithOnFinish(func(hookCtx context.Context, _ *ai.GenerateResult) error {
+			if got := hookCtx.Value(testContextKey("trace")); got != "stream-tool-loop" {
+				t.Fatalf("finish context = %v, want stream-tool-loop", got)
+			}
+			hookCalls = append(hookCalls, "finish")
+
+			return nil
+		}),
+	)
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Text != "done" {
+		t.Errorf("result.Text = %q, want done", result.Text)
+	}
+
+	expected := "[prepare:0 step:tool_calls prepare:1 step:stop finish]"
+	if got := fmt.Sprint(hookCalls); got != expected {
+		t.Errorf("hook calls = %s, want %s", got, expected)
+	}
+}
+
+func TestStreamTextToolLoopNoToolsConfigured(t *testing.T) {
+	// When no tools are configured, StreamText should behave exactly
+	// like the single-step path even with MaxSteps > 1.
+	mock := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "plain"}) {
+						return
+					}
+					yield(model.FinishChunk{FinishReason: model.FinishReasonStop})
+				},
+			}, nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(context.Background(), mock,
+		ai.WithPrompt("Hi"),
+		ai.WithMaxSteps(5),
+	)
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	result, err := streamResult.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+
+	if result.Text != "plain" {
+		t.Errorf("result.Text = %q, want plain", result.Text)
+	}
+
+	// Single-step path: no Steps populated.
+	if len(result.Steps) != 0 {
+		t.Errorf("Steps = %d, want 0 (single-step path)", len(result.Steps))
+	}
+}
+
+func TestStreamTextToolLoopChunksFromAllSteps(t *testing.T) {
+	// Verify that Chunks() yields chunks from all steps.
+	streamCallCount := 0
+	mock := &mockModel{
+		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
+			streamCallCount++
+
+			if streamCallCount == 1 {
+				return &model.StreamResponse{
+					Stream: func(yield func(model.Chunk) bool) {
+						if !yield(model.TextDelta{Text: "thinking..."}) {
+							return
+						}
+						if !yield(model.ToolCallDelta{
+							ToolCallID: "call_1",
+							ToolName:   "calc",
+							ArgsJSON:   `{"x":1}`,
+						}) {
+							return
+						}
+						if !yield(model.FinishChunk{FinishReason: model.FinishReasonToolCalls}) {
+							return
+						}
+						yield(model.UsageChunk{Usage: model.Usage{InputTokens: 5, OutputTokens: 3}})
+					},
+				}, nil
+			}
+
+			return &model.StreamResponse{
+				Stream: func(yield func(model.Chunk) bool) {
+					if !yield(model.TextDelta{Text: "result: 1"}) {
+						return
+					}
+					if !yield(model.FinishChunk{FinishReason: model.FinishReasonStop}) {
+						return
+					}
+					yield(model.UsageChunk{Usage: model.Usage{InputTokens: 10, OutputTokens: 5}})
+				},
+			}, nil
+		},
+	}
+
+	calcTool := ai.Tool{
+		Name: "calc",
+		Execute: func(_ context.Context, _ json.RawMessage) (string, error) {
+			return "1", nil
+		},
+	}
+
+	streamResult, err := ai.StreamText(context.Background(), mock,
+		ai.WithPrompt("calc"),
+		ai.WithTools(calcTool),
+		ai.WithMaxSteps(3),
+	)
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	var (
+		textChunks     int
+		toolCallChunks int
+		finishChunks   int
+		usageChunks    int
+	)
+	for chunk := range streamResult.Chunks() {
+		switch chunk.(type) {
+		case model.TextDelta:
+			textChunks++
+		case model.ToolCallDelta:
+			toolCallChunks++
+		case model.FinishChunk:
+			finishChunks++
+		case model.UsageChunk:
+			usageChunks++
+		}
+	}
+
+	if textChunks != 2 {
+		t.Errorf("textChunks = %d, want 2 (one from each step)", textChunks)
+	}
+
+	if toolCallChunks != 1 {
+		t.Errorf("toolCallChunks = %d, want 1", toolCallChunks)
+	}
+
+	if finishChunks != 2 {
+		t.Errorf("finishChunks = %d, want 2 (one per step)", finishChunks)
+	}
+
+	if usageChunks != 2 {
+		t.Errorf("usageChunks = %d, want 2 (one per step)", usageChunks)
+	}
+}
+
 func TestGenerateObjectBasic(t *testing.T) {
 	type Recipe struct {
 		Name        string   `json:"name"`

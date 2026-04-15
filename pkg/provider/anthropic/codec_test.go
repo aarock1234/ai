@@ -538,6 +538,14 @@ func TestDecodeStreamToolCallDeltas(t *testing.T) {
 		t.Fatalf("chunk[1] type = %T, want ToolCallDelta", chunks[1])
 	}
 
+	if delta1.ToolCallID != "call_1" {
+		t.Errorf("chunk[1].ToolCallID = %q, want call_1", delta1.ToolCallID)
+	}
+
+	if delta1.ToolName != "get_weather" {
+		t.Errorf("chunk[1].ToolName = %q, want get_weather", delta1.ToolName)
+	}
+
 	if delta1.ArgsJSON != `{"city":` {
 		t.Errorf("chunk[1].ArgsJSON = %q, want partial JSON", delta1.ArgsJSON)
 	}
@@ -545,6 +553,14 @@ func TestDecodeStreamToolCallDeltas(t *testing.T) {
 	delta2, ok := chunks[2].(model.ToolCallDelta)
 	if !ok {
 		t.Fatalf("chunk[2] type = %T, want ToolCallDelta", chunks[2])
+	}
+
+	if delta2.ToolCallID != "call_1" {
+		t.Errorf("chunk[2].ToolCallID = %q, want call_1", delta2.ToolCallID)
+	}
+
+	if delta2.ToolName != "get_weather" {
+		t.Errorf("chunk[2].ToolName = %q, want get_weather", delta2.ToolName)
 	}
 
 	if delta2.ArgsJSON != `"NYC"}` {

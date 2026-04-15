@@ -53,8 +53,11 @@ type contentPartURL struct {
 	URL string `json:"url"`
 }
 
-// wireToolCall is a tool call in the OpenAI wire format.
+// wireToolCall is a tool call in the OpenAI wire format. In streaming
+// responses, Index identifies which tool call a delta belongs to; ID and
+// Function.Name appear only on the first delta for each tool call.
 type wireToolCall struct {
+	Index    int          `json:"index"`
 	ID       string       `json:"id"`
 	Type     string       `json:"type"`
 	Function wireFunction `json:"function"`

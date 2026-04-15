@@ -686,6 +686,55 @@ data: [DONE]
 	}
 }
 
+func TestDecodeStreamToolCallDeltasInheritIDAndName(t *testing.T) {
+	// OpenAI sends ID and Name only on the first delta for each tool call.
+	// Subsequent deltas identify the call by index only. The decoder must
+	// populate ToolCallID and ToolName on every emitted delta.
+	data := `data: {"id":"cmpl-1","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}
+
+data: {"id":"cmpl-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]}}]}
+
+data: {"id":"cmpl-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"NYC\"}"}}]}}]}
+
+data: {"id":"cmpl-1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+
+`
+	reader := strings.NewReader(data)
+	var toolDeltas []model.ToolCallDelta
+
+	for chunk := range openai.DecodeStream(reader) {
+		if td, ok := chunk.(model.ToolCallDelta); ok {
+			toolDeltas = append(toolDeltas, td)
+		}
+	}
+
+	if len(toolDeltas) != 3 {
+		t.Fatalf("tool deltas = %d, want 3", len(toolDeltas))
+	}
+
+	for i, td := range toolDeltas {
+		if td.ToolCallID != "call_1" {
+			t.Errorf("delta[%d].ToolCallID = %q, want call_1", i, td.ToolCallID)
+		}
+
+		if td.ToolName != "get_weather" {
+			t.Errorf("delta[%d].ToolName = %q, want get_weather", i, td.ToolName)
+		}
+	}
+
+	// Verify concatenated args form valid JSON.
+	var args strings.Builder
+	for _, td := range toolDeltas {
+		args.WriteString(td.ArgsJSON)
+	}
+
+	if args.String() != `{"city":"NYC"}` {
+		t.Errorf("concatenated args = %q, want valid JSON", args.String())
+	}
+}
+
 func TestDecodeResponseEmptyChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := `{
