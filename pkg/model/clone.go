@@ -21,6 +21,7 @@ func (r *Request) Clone() *Request {
 		Seed:             r.Seed,
 		StopSequences:    append([]string(nil), r.StopSequences...),
 		ActiveTools:      append([]string(nil), r.ActiveTools...),
+		Modalities:       append([]Modality(nil), r.Modalities...),
 		Headers:          cloneHeader(r.Headers),
 		ProviderOptions:  r.ProviderOptions.Clone(),
 	}
@@ -64,6 +65,27 @@ func (r *Request) Clone() *Request {
 		}
 	}
 
+	if r.Audio != nil {
+		cloned.Audio = &AudioOptions{
+			Voice:  r.Audio.Voice,
+			Format: r.Audio.Format,
+		}
+	}
+
+	if r.Reasoning != nil {
+		cloned.Reasoning = &ReasoningOptions{
+			Effort:    r.Reasoning.Effort,
+			MaxTokens: r.Reasoning.MaxTokens,
+			Exclude:   r.Reasoning.Exclude,
+		}
+	}
+
+	if r.Prediction != nil {
+		cloned.Prediction = &PredictionOptions{
+			Content: r.Prediction.Content,
+		}
+	}
+
 	return cloned
 }
 
@@ -92,11 +114,27 @@ func clonePart(part Part) Part {
 			Data:     append([]byte(nil), p.Data...),
 			MIMEType: p.MIMEType,
 		}
+	case FilePart:
+		return FilePart{
+			URL:      p.URL,
+			Data:     append([]byte(nil), p.Data...),
+			MIMEType: p.MIMEType,
+			Filename: p.Filename,
+		}
+	case ReasoningPart:
+		return ReasoningPart{
+			Text:      p.Text,
+			Signature: p.Signature,
+			ID:        p.ID,
+			Format:    p.Format,
+			Redacted:  p.Redacted,
+		}
 	case ToolCallPart:
 		return ToolCallPart{
-			ToolCallID: p.ToolCallID,
-			ToolName:   p.ToolName,
-			Args:       append(json.RawMessage(nil), p.Args...),
+			ToolCallID:       p.ToolCallID,
+			ToolName:         p.ToolName,
+			Args:             append(json.RawMessage(nil), p.Args...),
+			ProviderExecuted: p.ProviderExecuted,
 		}
 	case ToolResultPart:
 		return ToolResultPart{

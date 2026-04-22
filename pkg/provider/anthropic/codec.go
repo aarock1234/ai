@@ -30,7 +30,10 @@ type message struct {
 type contentBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
-	Source    *imageSource    `json:"source,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"`
+	Data      string          `json:"data,omitempty"`
+	Source    *blockSource    `json:"source,omitempty"`
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
@@ -39,7 +42,10 @@ type contentBlock struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
-type imageSource struct {
+// blockSource carries the source payload for image and document
+// content blocks. Anthropic uses the same shape for both; the outer
+// block type is what distinguishes them.
+type blockSource struct {
 	Type      string `json:"type"`
 	MediaType string `json:"media_type,omitempty"`
 	Data      string `json:"data,omitempty"`
@@ -112,6 +118,9 @@ type messageDelta struct {
 type contentBlockDelta struct {
 	Type        string `json:"type"`
 	Text        string `json:"text,omitempty"`
+	Thinking    string `json:"thinking,omitempty"`
+	Signature   string `json:"signature,omitempty"`
+	Data        string `json:"data,omitempty"`
 	PartialJSON string `json:"partial_json,omitempty"`
 }
 

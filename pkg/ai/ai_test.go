@@ -1704,8 +1704,8 @@ func TestExtractReasoningMiddlewareStreamYieldsBeforeCompletion(t *testing.T) {
 		t.Fatalf("result.Text = %q, want Answer: done", result.Text)
 	}
 
-	if result.Reasoning != "internal" {
-		t.Fatalf("result.Reasoning = %q, want internal", result.Reasoning)
+	if result.ReasoningText() != "internal" {
+		t.Fatalf("result.ReasoningText() = %q, want internal", result.ReasoningText())
 	}
 }
 

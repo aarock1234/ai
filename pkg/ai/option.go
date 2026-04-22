@@ -34,6 +34,10 @@ type config struct {
 	stopSequences    []string
 	timeout          time.Duration
 	responseFormat   *model.ResponseFormat
+	modalities       []model.Modality
+	audio            *model.AudioOptions
+	reasoning        *model.ReasoningOptions
+	prediction       *model.PredictionOptions
 	headers          http.Header
 	providerOpts     model.ProviderOptions
 	stopWhen         []StopWhenFunc
@@ -225,6 +229,54 @@ func WithProviderOption(provider, key string, value any) Option {
 // WithTimeout sets an overall timeout for the request.
 func WithTimeout(d time.Duration) Option {
 	return func(c *config) { c.timeout = d }
+}
+
+// WithModalities requests specific output types from the model. Most
+// providers default to text-only; pass ModalityImage or ModalityAudio
+// to unlock multimodal output on models that support it (e.g. OpenAI
+// gpt-audio, Gemini image-out via OpenRouter).
+func WithModalities(modalities ...model.Modality) Option {
+	return func(c *config) {
+		c.modalities = append([]model.Modality(nil), modalities...)
+	}
+}
+
+// WithAudio configures audio output. Required when ModalityAudio is
+// requested on providers that emit audio via chat completions.
+func WithAudio(voice, format string) Option {
+	return func(c *config) {
+		c.audio = &model.AudioOptions{
+			Voice:  voice,
+			Format: format,
+		}
+	}
+}
+
+// WithReasoning configures reasoning token behavior for reasoning
+// models. Effort is one of "low", "medium", "high"; MaxTokens bounds
+// the reasoning budget explicitly.
+func WithReasoning(opts model.ReasoningOptions) Option {
+	return func(c *config) {
+		c.reasoning = &model.ReasoningOptions{
+			Effort:    opts.Effort,
+			MaxTokens: opts.MaxTokens,
+			Exclude:   opts.Exclude,
+		}
+	}
+}
+
+// WithReasoningEffort is a convenience wrapper that sets only the
+// reasoning effort level.
+func WithReasoningEffort(effort string) Option {
+	return WithReasoning(model.ReasoningOptions{Effort: effort})
+}
+
+// WithPrediction attaches predicted output content to the request,
+// biasing the model toward regenerating the provided text.
+func WithPrediction(content string) Option {
+	return func(c *config) {
+		c.prediction = &model.PredictionOptions{Content: content}
+	}
 }
 
 // WithStopWhen registers a generation stop predicate. If any predicate

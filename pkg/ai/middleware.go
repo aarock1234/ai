@@ -147,8 +147,18 @@ func SimulateStreamingMiddleware(delay time.Duration) LanguageModelMiddleware {
 				return &model.StreamResponse{
 					Metadata: resp.Metadata.Clone(),
 					Stream: func(yield func(model.Chunk) bool) {
-						if resp.Reasoning != "" {
-							if !yield(model.ReasoningDelta{Text: resp.Reasoning}) {
+						for _, segment := range resp.Content {
+							reasoning, ok := segment.(model.ReasoningContent)
+							if !ok {
+								continue
+							}
+							if !yield(model.ReasoningDelta{
+								Text:      reasoning.Text,
+								ID:        reasoning.ID,
+								Signature: reasoning.Signature,
+								Format:    reasoning.Format,
+								Redacted:  reasoning.Redacted,
+							}) {
 								return
 							}
 						}
@@ -215,6 +225,8 @@ func mergeRequestDefaults(req *model.Request, defaults *model.Request) *model.Re
 	if len(req.Messages) > 0 {
 		merged.Messages = req.Clone().Messages
 	}
+
+	// Sampling parameters.
 	if req.Temperature != nil {
 		merged.Temperature = req.Temperature
 	}
@@ -239,6 +251,8 @@ func mergeRequestDefaults(req *model.Request, defaults *model.Request) *model.Re
 	if len(req.StopSequences) > 0 {
 		merged.StopSequences = append([]string(nil), req.StopSequences...)
 	}
+
+	// Tools.
 	if len(req.Tools) > 0 {
 		merged.Tools = req.Clone().Tools
 	}
@@ -251,9 +265,13 @@ func mergeRequestDefaults(req *model.Request, defaults *model.Request) *model.Re
 			ToolName: req.ToolChoice.ToolName,
 		}
 	}
+
+	// Output format.
 	if req.ResponseFormat != nil {
 		merged.ResponseFormat = req.Clone().ResponseFormat
 	}
+
+	// Headers and provider-scoped options.
 	if len(req.Headers) > 0 {
 		if merged.Headers == nil {
 			merged.Headers = make(http.Header)
@@ -294,17 +312,34 @@ func stripJSONFence(text string) string {
 	return strings.TrimSpace(text)
 }
 
+// extractResponseReasoning pulls <reasoning>...</reasoning> blocks out
+// of TextContent entries and replaces them with a ReasoningContent
+// segment preceding the cleaned text. Blocks with no reasoning text
+// leave the content untouched.
 func extractResponseReasoning(resp *model.Response) {
-	for i, content := range resp.Content {
+	if resp == nil {
+		return
+	}
+
+	updated := make([]model.Content, 0, len(resp.Content))
+	for _, content := range resp.Content {
 		text, ok := content.(model.TextContent)
 		if !ok {
+			updated = append(updated, content)
+
 			continue
 		}
 
 		reasoning, cleaned := splitReasoning(text.Text)
-		resp.Reasoning += reasoning
-		resp.Content[i] = model.TextContent{Text: cleaned}
+		if reasoning != "" {
+			updated = append(updated, model.ReasoningContent{Text: reasoning})
+		}
+		if cleaned != "" {
+			updated = append(updated, model.TextContent{Text: cleaned})
+		}
 	}
+
+	resp.Content = updated
 }
 
 func splitReasoning(text string) (string, string) {

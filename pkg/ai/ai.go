@@ -196,6 +196,10 @@ func buildRequest(cfg *config) *model.Request {
 		StopSequences:    append([]string(nil), cfg.stopSequences...),
 		ToolChoice:       cloneToolChoice(cfg.toolChoice),
 		ResponseFormat:   cloneResponseFormat(cfg.responseFormat),
+		Modalities:       append([]model.Modality(nil), cfg.modalities...),
+		Audio:            cloneAudioOptions(cfg.audio),
+		Reasoning:        cloneReasoningOptions(cfg.reasoning),
+		Prediction:       clonePredictionOptions(cfg.prediction),
 		Headers:          cloneHeaders(cfg.headers),
 		ProviderOptions:  cfg.providerOpts.Clone(),
 	}
@@ -238,11 +242,27 @@ func convertMessage(msg Message) model.Message {
 					Data:     p.Data,
 					MIMEType: p.MIMEType,
 				})
+			case FilePart:
+				mm.Parts = append(mm.Parts, model.FilePart{
+					URL:      p.URL,
+					Data:     p.Data,
+					MIMEType: p.MIMEType,
+					Filename: p.Filename,
+				})
+			case ReasoningPart:
+				mm.Parts = append(mm.Parts, model.ReasoningPart{
+					Text:      p.Text,
+					Signature: p.Signature,
+					ID:        p.ID,
+					Format:    p.Format,
+					Redacted:  p.Redacted,
+				})
 			case ToolCallPart:
 				mm.Parts = append(mm.Parts, model.ToolCallPart{
-					ToolCallID: p.ToolCallID,
-					ToolName:   p.ToolName,
-					Args:       p.Args,
+					ToolCallID:       p.ToolCallID,
+					ToolName:         p.ToolName,
+					Args:             p.Args,
+					ProviderExecuted: p.ProviderExecuted,
 				})
 			case ToolResultPart:
 				mm.Parts = append(mm.Parts, model.ToolResultPart{
@@ -282,25 +302,38 @@ func buildToolMap(tools []Tool) map[string]Tool {
 
 // extractStep converts a model.Response into a Step.
 func extractStep(resp *model.Response) Step {
-	var text string
-	var toolCalls []ToolCall
+	var (
+		text      strings.Builder
+		reasoning []Reasoning
+		files     []File
+		sources   []Source
+		toolCalls []ToolCall
+	)
 
-	for _, c := range resp.Content {
-		switch content := c.(type) {
+	for _, segment := range resp.Content {
+		switch c := segment.(type) {
 		case model.TextContent:
-			text += content.Text
+			text.WriteString(c.Text)
+		case model.ReasoningContent:
+			reasoning = append(reasoning, reasoningFromContent(c))
+		case model.FileContent:
+			files = append(files, fileFromContent(c))
+		case model.SourceContent:
+			sources = append(sources, sourceFromContent(c))
 		case model.ToolCallContent:
 			toolCalls = append(toolCalls, ToolCall{
-				ToolCallID: content.ToolCallID,
-				ToolName:   content.ToolName,
-				Args:       json.RawMessage(content.Args),
+				ToolCallID: c.ToolCallID,
+				ToolName:   c.ToolName,
+				Args:       json.RawMessage(c.Args),
 			})
 		}
 	}
 
 	return Step{
-		Text:            text,
-		Reasoning:       resp.Reasoning,
+		Text:            text.String(),
+		Reasoning:       reasoning,
+		Files:           files,
+		Sources:         sources,
 		ToolCalls:       toolCalls,
 		FinishReason:    resp.FinishReason,
 		RawFinishReason: resp.RawFinishReason,
@@ -363,8 +396,20 @@ func executeToolCalls(ctx context.Context, calls []ToolCall, toolMap map[string]
 // appendToolMessages adds assistant tool calls and tool results to the
 // conversation for the next iteration of the tool loop.
 func appendToolMessages(msgs []model.Message, step Step, results []ToolResult) []model.Message {
-	// Assistant message with tool calls.
+	// Assistant message with any reasoning, text, and tool calls from
+	// this step. Reasoning is sent back first so providers that honor
+	// round-tripped thinking blocks (Anthropic, OpenRouter reasoning
+	// models) see it before the follow-up turn.
 	var assistantParts []model.Part
+	for _, block := range step.Reasoning {
+		assistantParts = append(assistantParts, model.ReasoningPart{
+			Text:      block.Text,
+			Signature: block.Signature,
+			ID:        block.ID,
+			Format:    block.Format,
+			Redacted:  block.Redacted,
+		})
+	}
 	if step.Text != "" {
 		assistantParts = append(assistantParts, model.TextPart{Text: step.Text})
 	}
@@ -399,31 +444,25 @@ func appendToolMessages(msgs []model.Message, step Step, results []ToolResult) [
 }
 
 // buildResult assembles the final GenerateResult from all steps.
+// The last step supplies content/metadata; usage is the aggregated
+// total across every step.
 func buildResult(steps []Step, totalUsage Usage) *GenerateResult {
 	if len(steps) == 0 {
 		return &GenerateResult{}
 	}
 
 	last := steps[len(steps)-1]
+	result := resultFromStep(last)
+	result.Usage = totalUsage
+	result.Steps = steps
+	result.Metadata = last.Metadata.Clone()
+	result.Warnings = append([]string(nil), last.Warnings...)
 
-	// Collect all tool results across all steps.
-	var allToolResults []ToolResult
 	for _, s := range steps {
-		allToolResults = append(allToolResults, s.ToolResults...)
+		result.ToolResults = append(result.ToolResults, s.ToolResults...)
 	}
 
-	return &GenerateResult{
-		Text:            last.Text,
-		Reasoning:       last.Reasoning,
-		ToolCalls:       last.ToolCalls,
-		ToolResults:     allToolResults,
-		FinishReason:    last.FinishReason,
-		RawFinishReason: last.RawFinishReason,
-		Usage:           totalUsage,
-		Steps:           steps,
-		Metadata:        last.Metadata.Clone(),
-		Warnings:        append([]string(nil), last.Warnings...),
-	}
+	return result
 }
 
 func buildActiveToolSet(names []string) map[string]bool {
@@ -476,6 +515,39 @@ func cloneHeaders(headers http.Header) http.Header {
 	}
 
 	return headers.Clone()
+}
+
+func cloneAudioOptions(opts *model.AudioOptions) *model.AudioOptions {
+	if opts == nil {
+		return nil
+	}
+
+	return &model.AudioOptions{
+		Voice:  opts.Voice,
+		Format: opts.Format,
+	}
+}
+
+func cloneReasoningOptions(opts *model.ReasoningOptions) *model.ReasoningOptions {
+	if opts == nil {
+		return nil
+	}
+
+	return &model.ReasoningOptions{
+		Effort:    opts.Effort,
+		MaxTokens: opts.MaxTokens,
+		Exclude:   opts.Exclude,
+	}
+}
+
+func clonePredictionOptions(opts *model.PredictionOptions) *model.PredictionOptions {
+	if opts == nil {
+		return nil
+	}
+
+	return &model.PredictionOptions{
+		Content: opts.Content,
+	}
 }
 
 func shouldStop(conditions []StopWhenFunc, step Step) bool {
@@ -624,43 +696,13 @@ func streamToolLoop(ctx context.Context, m model.Model, req *model.Request, cfg 
 
 			// Accumulate this step's data from the stream while
 			// forwarding every chunk to the caller.
-			var (
-				textBuilder      strings.Builder
-				reasoningBuilder strings.Builder
-				finishReason     model.FinishReason
-				rawFinishReason  string
-				stepUsage        Usage
-				stepMetadata     = streamResp.Metadata.Clone()
-				warnings         []string
-			)
-
-			toolCallArgs := make(map[string]*strings.Builder)
-			toolCallNames := make(map[string]string)
+			acc := newStreamAccumulator()
+			stepMetadata := streamResp.Metadata.Clone()
 
 			for chunk := range streamResp.Stream {
-				switch c := chunk.(type) {
-				case model.TextDelta:
-					textBuilder.WriteString(c.Text)
-				case model.ReasoningDelta:
-					reasoningBuilder.WriteString(c.Text)
-				case model.ToolCallDelta:
-					if _, ok := toolCallArgs[c.ToolCallID]; !ok {
-						toolCallArgs[c.ToolCallID] = &strings.Builder{}
-					}
-					toolCallArgs[c.ToolCallID].WriteString(c.ArgsJSON)
-					if c.ToolName != "" {
-						toolCallNames[c.ToolCallID] = c.ToolName
-					}
-				case model.FinishChunk:
-					finishReason = c.FinishReason
-					rawFinishReason = c.RawFinishReason
-					if rawFinishReason == "" {
-						rawFinishReason = string(c.FinishReason)
-					}
-				case model.UsageChunk:
-					stepUsage = c.Usage
-				case model.ProviderMetadataChunk:
-					stepMetadata = c.Metadata.Clone()
+				acc.observe(chunk)
+				if meta, ok := chunk.(model.ProviderMetadataChunk); ok {
+					stepMetadata = meta.Metadata.Clone()
 				}
 
 				if !yield(chunk) {
@@ -668,26 +710,7 @@ func streamToolLoop(ctx context.Context, m model.Model, req *model.Request, cfg 
 				}
 			}
 
-			// Assemble the completed step.
-			var toolCalls []ToolCall
-			for id, args := range toolCallArgs {
-				toolCalls = append(toolCalls, ToolCall{
-					ToolCallID: id,
-					ToolName:   toolCallNames[id],
-					Args:       []byte(args.String()),
-				})
-			}
-
-			stepResult := Step{
-				Text:            textBuilder.String(),
-				Reasoning:       reasoningBuilder.String(),
-				ToolCalls:       toolCalls,
-				FinishReason:    finishReason,
-				RawFinishReason: rawFinishReason,
-				Usage:           stepUsage,
-				Metadata:        stepMetadata,
-				Warnings:        warnings,
-			}
+			stepResult := acc.buildStep(stepMetadata)
 
 			// Fire step hooks.
 			for _, hook := range cfg.onStepFinish {
@@ -707,7 +730,7 @@ func streamToolLoop(ctx context.Context, m model.Model, req *model.Request, cfg 
 			}
 
 			// No tool calls or no tools → final step.
-			if finishReason != model.FinishReasonToolCalls || len(toolMap) == 0 {
+			if stepResult.FinishReason != model.FinishReasonToolCalls || len(toolMap) == 0 {
 				state.recordStep(stepResult)
 
 				return

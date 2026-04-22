@@ -118,6 +118,108 @@ result, err := ai.GenerateText(ctx, openai.Chat("gpt-5.4"),
 )
 ```
 
+## Multimodal Output
+
+Results carry every content segment the model produced, not just text. Generated files (images, audio), source citations, and reasoning blocks all flow through the normalized `GenerateResult` alongside `Text`.
+
+### Image Output
+
+OpenRouter returns image-generation models' output as base64 data URLs on `message.images[]`. The SDK decodes those into `File` entries:
+
+```go
+result, err := ai.GenerateText(ctx, openrouter.Chat("google/gemini-2.5-flash-image-preview"),
+	ai.WithPrompt("A watercolor lighthouse at sunrise"),
+	ai.WithModalities(model.ModalityText, model.ModalityImage),
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+for _, file := range result.Files {
+	// file.Data is already base64-decoded bytes.
+	os.WriteFile("out.png", file.Data, 0o644)
+	fmt.Println("saved", file.MIMEType)
+}
+```
+
+For streaming, iterate files as they arrive:
+
+```go
+stream, _ := ai.StreamText(ctx, model,
+	ai.WithPrompt(prompt),
+	ai.WithModalities(model.ModalityText, model.ModalityImage),
+)
+for file := range stream.Files() {
+	save(file)
+}
+```
+
+### Audio Output
+
+OpenAI `gpt-audio` and friends emit audio via `message.audio.data`. Request it with `WithAudio`:
+
+```go
+result, err := ai.GenerateText(ctx, openai.Chat("gpt-audio"),
+	ai.WithPrompt("Say hello in a warm voice."),
+	ai.WithModalities(model.ModalityText, model.ModalityAudio),
+	ai.WithAudio("alloy", "wav"),
+)
+// result.Files[0] holds the audio bytes, result.Text holds the transcript.
+```
+
+### Reasoning Output
+
+Anthropic extended thinking, OpenAI o-series, and OpenRouter reasoning models populate `Reasoning` blocks on the result. Signatures and formats are preserved so blocks round-trip back to the provider on follow-up turns:
+
+```go
+result, err := ai.GenerateText(ctx, anthropic.Chat("claude-opus-4-5"),
+	ai.WithPrompt("Solve this step-by-step..."),
+	ai.WithReasoning(model.ReasoningOptions{Effort: "high"}),
+)
+
+fmt.Println("reasoning:", result.ReasoningText())
+fmt.Println("answer:", result.Text)
+
+for _, block := range result.Reasoning {
+	if block.Redacted {
+		continue // encrypted/summary block; keep for round-tripping
+	}
+	fmt.Println(block.Format, block.Signature, block.Text)
+}
+```
+
+When running a tool loop, the SDK automatically re-sends reasoning blocks back to the provider on subsequent turns so thinking state carries forward.
+
+### Source Citations
+
+Web search tools (OpenAI `gpt-5-search`, OpenRouter models with web grounding) emit `url_citation` annotations that surface as `Source` entries:
+
+```go
+for _, src := range result.Sources {
+	fmt.Printf("%s: %s [%d-%d]\n", src.Title, src.URL, src.StartIndex, src.EndIndex)
+}
+```
+
+### File Inputs
+
+Send PDFs, audio, or arbitrary files as user input via `FilePart`:
+
+```go
+pdfBytes, _ := os.ReadFile("doc.pdf")
+
+result, err := ai.GenerateText(ctx, anthropic.Chat("claude-opus-4-5"),
+	ai.WithMessages(ai.Message{
+		Role: ai.RoleUser,
+		Parts: []ai.Part{
+			ai.TextPart{Text: "Summarize this document."},
+			ai.FilePart{Data: pdfBytes, MIMEType: "application/pdf"},
+		},
+	}),
+)
+```
+
+Image inputs use the existing `ai.ImagePart` for clarity; other MIME types use `FilePart`.
+
 ## Embeddings
 
 ```go
@@ -129,7 +231,9 @@ results, err := ai.EmbedMany(ctx, openai.Embedding("text-embedding-3-small"),
 )
 ```
 
-## Images
+## Images (dedicated endpoint)
+
+For providers with a separate image-generation endpoint (e.g. OpenAI `/images`):
 
 ```go
 result, err := ai.GenerateImage(ctx, openai.Image("gpt-image-1"), model.ImageRequest{
@@ -138,6 +242,8 @@ result, err := ai.GenerateImage(ctx, openai.Image("gpt-image-1"), model.ImageReq
 	OutputFormat: "png",
 })
 ```
+
+For chat-based image generation (OpenRouter, Gemini), use `ai.GenerateText` with `WithModalities` — see [Image Output](#image-output) above.
 
 ## Audio
 
@@ -155,6 +261,8 @@ transcript, err := ai.Transcribe(ctx, openai.Transcription("gpt-4o-mini-transcri
 	},
 })
 ```
+
+For chat-based audio generation (OpenAI `gpt-audio`), use `ai.GenerateText` with `WithAudio` — see [Audio Output](#audio-output) above.
 
 ## Reranking
 
@@ -248,6 +356,31 @@ result, err := ai.GenerateText(ctx, p.Chat(os.Getenv("AI_MODEL")),
 | `WithStopSequences(s...)` | Stop generation at these sequences |
 | `WithHeaders(h)` | Attach per-request HTTP headers |
 | `WithTimeout(d)` | Overall request timeout |
+| `WithModalities(m...)` | Request `text`, `image`, and/or `audio` output |
+| `WithAudio(voice, format)` | Configure audio output (voice, encoding) |
+| `WithReasoning(opts)` | Configure reasoning budget for reasoning models |
+| `WithReasoningEffort(level)` | Shortcut for `"low" / "medium" / "high"` reasoning |
+| `WithPrediction(content)` | Attach predicted output for faster generation |
+| `WithProviderOption(p, k, v)` | Provider-specific request option passthrough |
+
+## Result Shape
+
+`GenerateResult` and `Step` expose every content segment the provider returned:
+
+| Field | Type | Populated when |
+|---|---|---|
+| `Text` | `string` | Always; concatenated plain-text output |
+| `Reasoning` | `[]Reasoning` | Model emitted thinking / reasoning_details blocks |
+| `Files` | `[]File` | Model emitted images or audio |
+| `Sources` | `[]Source` | Model cited web pages or documents |
+| `ToolCalls` | `[]ToolCall` | Model requested tool invocations |
+| `ToolResults` | `[]ToolResult` | Tool loop executed tools |
+| `Usage` | `Usage` | Always; input / output / reasoning / audio / image breakdown |
+| `Warnings` | `[]string` | Provider surfaced non-fatal issues (refusals, unsupported settings) |
+| `Metadata` | `ProviderMetadata` | Always; request id, model id, provider-specific fields |
+| `Steps` | `[]Step` | `WithMaxSteps > 1` tool loop ran |
+
+`result.ReasoningText()` concatenates non-redacted reasoning for quick display. `Reasoning[i].Signature` and `Signature.Format` round-trip back to providers that verify prior thinking on follow-up turns — the SDK does this automatically in the tool loop.
 
 ## Architecture
 
@@ -255,19 +388,23 @@ result, err := ai.GenerateText(ctx, p.Chat(os.Getenv("AI_MODEL")),
 pkg/
 ├── ai/            Consumer API: text, object, image, audio, rerank, middleware
 ├── model/         Provider contracts and normalized request/response types
-├── provider/
-│   ├── anthropic/ Anthropic Messages API provider
-│   ├── cohere/    Cohere reranking provider
-│   ├── openai/    OpenAI provider + shared OpenAI-compatible codec
-│   └── openrouter/ OpenRouter provider
+└── provider/
+    ├── anthropic/ Anthropic Messages API provider
+    ├── cohere/    Cohere reranking provider
+    ├── openai/    OpenAI provider + shared OpenAI-compatible codec
+    └── openrouter/ OpenRouter provider
+
+internal/
+├── apierror/      Shared API error type
+├── provideropts/  Provider-specific request option passthrough
 ├── schema/        JSON Schema generation from Go types
-└── apierror/      Shared API error type
+└── sse/           Server-sent events parser
 ```
 
 The SDK is built on three layers:
 
 1. **`ai`** -- The functions you call. Provider-agnostic.
-2. **`model`** -- The interfaces providers implement plus normalized request and response types.
+2. **`model`** -- The interfaces providers implement plus normalized request/response/content types.
 3. **`provider/*`** -- Concrete implementations. OpenRouter reuses the OpenAI codec since they share the same wire format.
 
 ## Adding a Provider
@@ -282,6 +419,8 @@ type Model interface {
 	DoStream(ctx context.Context, req *Request) (*StreamResponse, error)
 }
 ```
+
+Populate `Response.Content` with any of `TextContent`, `ReasoningContent`, `FileContent`, `SourceContent`, `ToolCallContent`, or `ToolResultContent` depending on what the provider emits. Corresponding stream chunks (`TextDelta`, `ReasoningDelta`, `FileChunk`, `SourceChunk`, `ToolCallDelta`, `FinishChunk`, `UsageChunk`, `ErrorChunk`) flow through `Model.DoStream`.
 
 If your provider uses the OpenAI-compatible API format, import `pkg/provider/openai` and reuse its codec (`EncodeRequest`, `DecodeResponse`, `DoRequest`, `DoStreamRequest`, `DecodeStream`). See `pkg/provider/openrouter/` for a complete example.
 

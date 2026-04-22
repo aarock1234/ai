@@ -69,6 +69,56 @@ func (s ProviderOptionSet) Lookup(key string) (json.RawMessage, bool) {
 	return append(json.RawMessage(nil), value...), true
 }
 
+// Modality identifies an output type requested from or produced by the
+// model.
+type Modality string
+
+const (
+	// ModalityText requests text output.
+	ModalityText Modality = "text"
+
+	// ModalityImage requests image output.
+	ModalityImage Modality = "image"
+
+	// ModalityAudio requests audio output.
+	ModalityAudio Modality = "audio"
+)
+
+// AudioOptions configures audio output. Used by models that can emit
+// audio via the chat completions API (e.g. OpenAI gpt-audio).
+type AudioOptions struct {
+	// Voice is the voice identifier (e.g. "alloy", "sage").
+	Voice string
+
+	// Format is the audio encoding (e.g. "wav", "mp3", "pcm16").
+	Format string
+}
+
+// ReasoningOptions configures reasoning token output. Providers that
+// support reasoning models (OpenAI o-series, Anthropic extended thinking,
+// DeepSeek-R1 via OpenRouter) interpret these fields.
+type ReasoningOptions struct {
+	// Effort is a coarse intensity dial ("low", "medium", "high").
+	// Providers map this to a sensible reasoning budget.
+	Effort string
+
+	// MaxTokens sets an explicit reasoning token budget. When non-zero,
+	// it takes precedence over Effort on providers that honor both.
+	MaxTokens int
+
+	// Exclude asks the provider to compute reasoning without returning
+	// it in the response.
+	Exclude bool
+}
+
+// PredictionOptions configures predicted outputs. OpenAI uses this to
+// bias the model toward content the caller expects to regenerate
+// largely unchanged (e.g. code-edit workflows).
+type PredictionOptions struct {
+	// Content is the predicted content string.
+	Content string
+}
+
 // Request is the normalized request shape that the SDK builds and passes
 // to Model.DoGenerate and Model.DoStream. Providers translate this into
 // their wire format.
@@ -118,6 +168,21 @@ type Request struct {
 	// ResponseFormat requests a specific output format from the model.
 	ResponseFormat *ResponseFormat
 
+	// Modalities requests specific output types (text, image, audio).
+	// When empty, the provider default applies.
+	Modalities []Modality
+
+	// Audio configures audio output parameters. Required by most
+	// providers when Modalities contains ModalityAudio.
+	Audio *AudioOptions
+
+	// Reasoning configures reasoning token behavior. Nil uses the
+	// provider default.
+	Reasoning *ReasoningOptions
+
+	// Prediction carries predicted output content, when supported.
+	Prediction *PredictionOptions
+
 	// Headers are additional HTTP headers sent with this request.
 	Headers http.Header
 
@@ -163,7 +228,10 @@ type TextPart struct {
 
 func (TextPart) partType() {}
 
-// ImagePart is an image segment, either inline data or a URL.
+// ImagePart is an image segment, either inline data or a URL. This is
+// equivalent to FilePart with an image/* MIMEType but kept as a
+// distinct type for clarity because vision models are the most common
+// multimodal case.
 type ImagePart struct {
 	// URL is the image URL. Mutually exclusive with Data.
 	URL string
@@ -177,11 +245,58 @@ type ImagePart struct {
 
 func (ImagePart) partType() {}
 
+// FilePart is a generic file segment (PDF, audio, non-image). User
+// messages use FilePart for document inputs; assistant messages use it
+// to round-trip generated files back to the provider in follow-up
+// requests.
+type FilePart struct {
+	// URL is the file URL. Mutually exclusive with Data.
+	URL string
+
+	// Data is the raw file bytes. Mutually exclusive with URL.
+	Data []byte
+
+	// MIMEType is the file media type (e.g. "application/pdf",
+	// "audio/wav").
+	MIMEType string
+
+	// Filename is an optional filename hint for the provider.
+	Filename string
+}
+
+func (FilePart) partType() {}
+
+// ReasoningPart carries reasoning content from a prior assistant turn.
+// Sending reasoning back to providers that support it (Anthropic
+// extended thinking, OpenRouter reasoning models) preserves the
+// reasoning state across turns.
+type ReasoningPart struct {
+	// Text is the plaintext reasoning content. Empty for redacted blocks.
+	Text string
+
+	// Signature is the provider-supplied opaque signature for this block.
+	Signature string
+
+	// ID is the provider-assigned identifier for this block.
+	ID string
+
+	// Format identifies the reasoning block's provider-specific shape.
+	Format string
+
+	// Redacted indicates the reasoning is encrypted or filtered.
+	Redacted bool
+}
+
+func (ReasoningPart) partType() {}
+
 // ToolCallPart represents the model requesting a tool invocation.
 type ToolCallPart struct {
 	ToolCallID string
 	ToolName   string
 	Args       json.RawMessage
+
+	// ProviderExecuted is true when the provider ran the tool itself.
+	ProviderExecuted bool
 }
 
 func (ToolCallPart) partType() {}

@@ -3,6 +3,7 @@ package anthropic
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 // Messages API wire format.
 func EncodeRequest(modelID string, req *model.Request, stream bool) (*MessageRequest, error) {
 	if req.ResponseFormat != nil {
-		return nil, fmt.Errorf("response_format is not supported by the anthropic provider")
+		return nil, errors.New("response_format is not supported by the anthropic provider")
 	}
 
 	system, messages, err := convertMessages(req.Messages)
@@ -85,6 +86,18 @@ func DecodeResponse(resp *MessageResponse) *model.Response {
 				continue
 			}
 			result.Content = append(result.Content, model.TextContent{Text: block.Text})
+		case "thinking":
+			result.Content = append(result.Content, model.ReasoningContent{
+				Text:      block.Thinking,
+				Signature: block.Signature,
+				Format:    "anthropic-thinking",
+			})
+		case "redacted_thinking":
+			result.Content = append(result.Content, model.ReasoningContent{
+				Text:     block.Data,
+				Format:   "anthropic-redacted-thinking",
+				Redacted: true,
+			})
 		case "tool_use":
 			result.Content = append(result.Content, model.ToolCallContent{
 				ToolCallID: block.ID,
@@ -186,7 +199,7 @@ func convertSystemMessage(msg model.Message) (string, error) {
 	for _, part := range msg.Parts {
 		textPart, ok := part.(model.TextPart)
 		if !ok {
-			return "", fmt.Errorf("system messages only support text parts")
+			return "", errors.New("system messages only support text parts")
 		}
 		if textPart.Text != "" {
 			parts = append(parts, textPart.Text)
@@ -232,6 +245,23 @@ func convertAssistantMessage(msg model.Message) (*message, error) {
 				Type: "text",
 				Text: p.Text,
 			})
+		case model.ReasoningPart:
+			if p.Redacted {
+				blocks = append(blocks, contentBlock{
+					Type: "redacted_thinking",
+					Data: p.Text,
+				})
+
+				continue
+			}
+			if p.Text == "" {
+				continue
+			}
+			blocks = append(blocks, contentBlock{
+				Type:      "thinking",
+				Thinking:  p.Text,
+				Signature: p.Signature,
+			})
 		case model.ToolCallPart:
 			blocks = append(blocks, contentBlock{
 				Type:  "tool_use",
@@ -240,9 +270,11 @@ func convertAssistantMessage(msg model.Message) (*message, error) {
 				Input: objectJSON(p.Args),
 			})
 		case model.ImagePart:
-			return nil, fmt.Errorf("assistant messages do not support image parts")
+			return nil, errors.New("assistant messages do not support image parts")
+		case model.FilePart:
+			return nil, errors.New("assistant messages do not support file parts")
 		case model.ToolResultPart:
-			return nil, fmt.Errorf("assistant messages do not support tool result parts")
+			return nil, errors.New("assistant messages do not support tool result parts")
 		default:
 			return nil, fmt.Errorf("unsupported assistant message part: %T", part)
 		}
@@ -264,7 +296,7 @@ func convertToolResultMessage(msg model.Message) (*message, error) {
 	for _, part := range msg.Parts {
 		toolResult, ok := part.(model.ToolResultPart)
 		if !ok {
-			return nil, fmt.Errorf("tool messages only support tool result parts")
+			return nil, errors.New("tool messages only support tool result parts")
 		}
 		blocks = append(blocks, contentBlock{
 			Type:      "tool_result",
@@ -295,11 +327,9 @@ func convertUserPart(part model.Part) (*contentBlock, error) {
 			Text: p.Text,
 		}, nil
 	case model.ImagePart:
-		imageBlock, err := convertImagePart(p)
-		if err != nil {
-			return nil, err
-		}
-		return imageBlock, nil
+		return convertImagePart(p)
+	case model.FilePart:
+		return convertFilePart(p)
 	case model.ToolResultPart:
 		return &contentBlock{
 			Type:      "tool_result",
@@ -308,9 +338,47 @@ func convertUserPart(part model.Part) (*contentBlock, error) {
 			IsError:   p.IsError,
 		}, nil
 	case model.ToolCallPart:
-		return nil, fmt.Errorf("user messages do not support tool call parts")
+		return nil, errors.New("user messages do not support tool call parts")
 	default:
 		return nil, fmt.Errorf("unsupported user message part: %T", part)
+	}
+}
+
+// convertFilePart maps a generic FilePart to an Anthropic content block.
+// Images fall back to the image path; PDFs become document blocks.
+// Other MIME types are currently unsupported.
+func convertFilePart(part model.FilePart) (*contentBlock, error) {
+	switch {
+	case strings.HasPrefix(part.MIMEType, "image/"):
+		return convertImagePart(model.ImagePart{
+			URL:      part.URL,
+			Data:     part.Data,
+			MIMEType: part.MIMEType,
+		})
+	case part.MIMEType == "application/pdf":
+		switch {
+		case len(part.Data) > 0:
+			return &contentBlock{
+				Type: "document",
+				Source: &blockSource{
+					Type:      "base64",
+					MediaType: part.MIMEType,
+					Data:      base64.StdEncoding.EncodeToString(part.Data),
+				},
+			}, nil
+		case part.URL != "":
+			return &contentBlock{
+				Type: "document",
+				Source: &blockSource{
+					Type: "url",
+					URL:  part.URL,
+				},
+			}, nil
+		default:
+			return nil, errors.New("document file part requires url or data")
+		}
+	default:
+		return nil, fmt.Errorf("unsupported file mime type: %s", part.MIMEType)
 	}
 }
 
@@ -318,11 +386,11 @@ func convertImagePart(part model.ImagePart) (*contentBlock, error) {
 	switch {
 	case len(part.Data) > 0:
 		if part.MIMEType == "" {
-			return nil, fmt.Errorf("image data requires mime type")
+			return nil, errors.New("image data requires mime type")
 		}
 		return &contentBlock{
 			Type: "image",
-			Source: &imageSource{
+			Source: &blockSource{
 				Type:      "base64",
 				MediaType: part.MIMEType,
 				Data:      base64.StdEncoding.EncodeToString(part.Data),
@@ -331,13 +399,13 @@ func convertImagePart(part model.ImagePart) (*contentBlock, error) {
 	case part.URL != "":
 		return &contentBlock{
 			Type: "image",
-			Source: &imageSource{
+			Source: &blockSource{
 				Type: "url",
 				URL:  part.URL,
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("image part requires url or data")
+		return nil, errors.New("image part requires url or data")
 	}
 }
 
@@ -365,7 +433,7 @@ func convertToolChoice(choice *model.ToolChoice) (*toolChoice, error) {
 		return &toolChoice{Type: "any"}, nil
 	case "tool":
 		if choice.ToolName == "" {
-			return nil, fmt.Errorf("tool choice type tool requires tool name")
+			return nil, errors.New("tool choice type tool requires tool name")
 		}
 		return &toolChoice{
 			Type: "tool",

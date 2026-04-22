@@ -49,11 +49,37 @@ type ImagePart struct {
 
 func (ImagePart) partType() {}
 
+// FilePart is a generic file attachment (PDF, audio, etc.). Images
+// should use ImagePart; FilePart covers the other MIME types.
+type FilePart struct {
+	URL      string
+	Data     []byte
+	MIMEType string
+	Filename string
+}
+
+func (FilePart) partType() {}
+
+// ReasoningPart carries a reasoning block from a prior assistant turn
+// back to the provider. Providers that support round-tripping reasoning
+// (Anthropic extended thinking, OpenRouter reasoning_details) honor the
+// Signature and Format fields.
+type ReasoningPart struct {
+	Text      string
+	Signature string
+	ID        string
+	Format    string
+	Redacted  bool
+}
+
+func (ReasoningPart) partType() {}
+
 // ToolCallPart represents a tool call made by the assistant.
 type ToolCallPart struct {
-	ToolCallID string
-	ToolName   string
-	Args       json.RawMessage
+	ToolCallID       string
+	ToolName         string
+	Args             json.RawMessage
+	ProviderExecuted bool
 }
 
 func (ToolCallPart) partType() {}

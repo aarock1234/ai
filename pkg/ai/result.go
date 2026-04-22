@@ -9,14 +9,59 @@ import (
 	"github.com/aarock1234/ai/pkg/model"
 )
 
+// File is a file emitted by the model (image, audio, document). Either
+// Data or URL is populated, mirroring what the provider returned.
+type File struct {
+	Data     []byte
+	URL      string
+	MIMEType string
+	Filename string
+	Metadata model.ProviderMetadata
+}
+
+// Source is a reference used to generate the response (web search
+// citation, document excerpt).
+type Source struct {
+	SourceType model.SourceType
+	ID         string
+	URL        string
+	Title      string
+	MIMEType   string
+	Filename   string
+	StartIndex int
+	EndIndex   int
+	Metadata   model.ProviderMetadata
+}
+
+// Reasoning is a reasoning block emitted by the model. Providers that
+// support multi-block reasoning (Anthropic extended thinking,
+// OpenRouter reasoning_details) may produce more than one per step.
+type Reasoning struct {
+	Text      string
+	Signature string
+	ID        string
+	Format    string
+	Redacted  bool
+	Metadata  model.ProviderMetadata
+}
+
 // GenerateResult is the result of a GenerateText call.
 type GenerateResult struct {
 	// Text is the generated text content, concatenated from all text
 	// content segments.
 	Text string
 
-	// Reasoning is provider or middleware-extracted reasoning text.
-	Reasoning string
+	// Reasoning contains reasoning blocks emitted by the model for the
+	// final step, in arrival order.
+	Reasoning []Reasoning
+
+	// Files contains file outputs emitted by the model for the final
+	// step (generated images, audio, etc.).
+	Files []File
+
+	// Sources contains source citations emitted by the model for the
+	// final step (e.g. web search citations).
+	Sources []Source
 
 	// ToolCalls contains any tool invocations requested by the model.
 	ToolCalls []ToolCall
@@ -46,10 +91,22 @@ type GenerateResult struct {
 	Steps []Step
 }
 
+// ReasoningText returns the concatenated reasoning text across all
+// blocks in the final step. Redacted blocks contribute nothing.
+func (r *GenerateResult) ReasoningText() string {
+	if r == nil {
+		return ""
+	}
+
+	return concatReasoning(r.Reasoning)
+}
+
 // Step records a single generation step in a multi-step tool loop.
 type Step struct {
 	Text            string
-	Reasoning       string
+	Reasoning       []Reasoning
+	Files           []File
+	Sources         []Source
 	ToolCalls       []ToolCall
 	ToolResults     []ToolResult
 	FinishReason    model.FinishReason
@@ -57,6 +114,12 @@ type Step struct {
 	Usage           Usage
 	Metadata        model.ProviderMetadata
 	Warnings        []string
+}
+
+// ReasoningText returns the concatenated reasoning text across all
+// blocks in this step.
+func (s Step) ReasoningText() string {
+	return concatReasoning(s.Reasoning)
 }
 
 // toolLoopState carries multi-step accumulation data shared between
@@ -131,6 +194,52 @@ func (s *StreamResult) Text() iter.Seq[string] {
 	}
 }
 
+// Reasoning returns an iterator that yields reasoning text fragments
+// as they arrive from the model. Use Chunks() if you need the full
+// reasoning block metadata.
+func (s *StreamResult) Reasoning() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		s.consume(func(chunk model.Chunk) bool {
+			delta, ok := chunk.(model.ReasoningDelta)
+			if !ok || delta.Text == "" {
+				return true
+			}
+
+			return yield(delta.Text)
+		})
+	}
+}
+
+// Files returns an iterator that yields complete files as the model
+// emits them (generated images, audio).
+func (s *StreamResult) Files() iter.Seq[File] {
+	return func(yield func(File) bool) {
+		s.consume(func(chunk model.Chunk) bool {
+			fc, ok := chunk.(model.FileChunk)
+			if !ok {
+				return true
+			}
+
+			return yield(fileFromChunk(fc))
+		})
+	}
+}
+
+// Sources returns an iterator that yields source citations as the
+// model emits them.
+func (s *StreamResult) Sources() iter.Seq[Source] {
+	return func(yield func(Source) bool) {
+		s.consume(func(chunk model.Chunk) bool {
+			sc, ok := chunk.(model.SourceChunk)
+			if !ok {
+				return true
+			}
+
+			return yield(sourceFromChunk(sc))
+		})
+	}
+}
+
 // Chunks returns an iterator that yields raw model chunks. Use this
 // when you need access to all chunk types (text, tool calls, finish,
 // usage) rather than just text deltas. The context cancel function
@@ -174,50 +283,136 @@ func (s *StreamResult) Result() (*GenerateResult, error) {
 	return s.final, s.err
 }
 
-func (s *StreamResult) consume(yield func(model.Chunk) bool) {
-	var (
-		textBuilder      strings.Builder
-		reasoningBuilder strings.Builder
-		toolCalls        []ToolCall
-		finishReason     model.FinishReason
-		rawFinishReason  string
-		usage            Usage
-		warnings         []string
-	)
+// streamAccumulator builds up a Step from a single provider stream.
+// Kept as a struct so the single-step and tool-loop consumers share
+// the same accumulation logic.
+type streamAccumulator struct {
+	text            strings.Builder
+	reasoning       []Reasoning
+	files           []File
+	sources         []Source
+	toolCalls       []ToolCall
+	toolCallArgs    map[string]*strings.Builder
+	toolCallNames   map[string]string
+	finishReason    model.FinishReason
+	rawFinishReason string
+	usage           Usage
+	warnings        []string
 
-	toolCallArgs := make(map[string]*strings.Builder)
-	toolCallNames := make(map[string]string)
+	// activeReasoningIdx is the index in reasoning whose text is still
+	// growing. -1 means no block is active. Tracking by index instead
+	// of pointer avoids dangling references when the slice is
+	// reallocated by append.
+	activeReasoningIdx int
+}
+
+func newStreamAccumulator() *streamAccumulator {
+	return &streamAccumulator{
+		toolCallArgs:       make(map[string]*strings.Builder),
+		toolCallNames:      make(map[string]string),
+		activeReasoningIdx: -1,
+	}
+}
+
+func (a *streamAccumulator) observe(chunk model.Chunk) {
+	switch c := chunk.(type) {
+	case model.StreamStartChunk:
+		a.warnings = append(a.warnings, c.Warnings...)
+	case model.TextDelta:
+		a.text.WriteString(c.Text)
+	case model.ReasoningDelta:
+		a.appendReasoning(c)
+	case model.ToolCallDelta:
+		if _, ok := a.toolCallArgs[c.ToolCallID]; !ok {
+			a.toolCallArgs[c.ToolCallID] = &strings.Builder{}
+		}
+		a.toolCallArgs[c.ToolCallID].WriteString(c.ArgsJSON)
+		if c.ToolName != "" {
+			a.toolCallNames[c.ToolCallID] = c.ToolName
+		}
+	case model.FileChunk:
+		a.files = append(a.files, fileFromChunk(c))
+	case model.SourceChunk:
+		a.sources = append(a.sources, sourceFromChunk(c))
+	case model.FinishChunk:
+		a.finishReason = c.FinishReason
+		a.rawFinishReason = c.RawFinishReason
+		if a.rawFinishReason == "" {
+			a.rawFinishReason = string(c.FinishReason)
+		}
+	case model.UsageChunk:
+		a.usage = c.Usage
+	case model.ErrorChunk:
+		if c.Err != nil {
+			a.warnings = append(a.warnings, c.Err.Error())
+		}
+	}
+}
+
+// appendReasoning merges consecutive reasoning deltas that belong to
+// the same block, while still allowing multiple distinct blocks per
+// step. The provider emits a new block when ID changes (or when a
+// redacted block appears).
+func (a *streamAccumulator) appendReasoning(delta model.ReasoningDelta) {
+	if a.activeReasoningIdx >= 0 && !delta.Redacted {
+		active := &a.reasoning[a.activeReasoningIdx]
+		if delta.ID == active.ID && delta.Format == active.Format {
+			active.Text += delta.Text
+			if delta.Signature != "" {
+				active.Signature = delta.Signature
+			}
+
+			return
+		}
+	}
+
+	a.reasoning = append(a.reasoning, Reasoning{
+		Text:      delta.Text,
+		Signature: delta.Signature,
+		ID:        delta.ID,
+		Format:    delta.Format,
+		Redacted:  delta.Redacted,
+	})
+	a.activeReasoningIdx = len(a.reasoning) - 1
+}
+
+func (a *streamAccumulator) buildStep(metadata model.ProviderMetadata) Step {
+	for id, args := range a.toolCallArgs {
+		a.toolCalls = append(a.toolCalls, ToolCall{
+			ToolCallID: id,
+			ToolName:   a.toolCallNames[id],
+			Args:       []byte(args.String()),
+		})
+	}
+
+	return Step{
+		Text:            a.text.String(),
+		Reasoning:       a.reasoning,
+		Files:           a.files,
+		Sources:         a.sources,
+		ToolCalls:       a.toolCalls,
+		FinishReason:    a.finishReason,
+		RawFinishReason: a.rawFinishReason,
+		Usage:           a.usage,
+		Metadata:        metadata,
+		Warnings:        a.warnings,
+	}
+}
+
+func (s *StreamResult) consume(yield func(model.Chunk) bool) {
+	acc := newStreamAccumulator()
 
 	defer func() {
 		var result *GenerateResult
 
 		if s.toolLoop != nil {
-			// Multi-step tool loop: the stream function recorded all
-			// steps (including the final one) into the shared state.
-			// Build the result from that data.
 			result = buildResult(s.toolLoop.steps, s.toolLoop.usage)
 			result.Metadata = s.Metadata()
 		} else {
-			// Single-step: assemble tool calls from accumulated deltas
-			// and build the result from stream accumulators.
-			for id, args := range toolCallArgs {
-				toolCalls = append(toolCalls, ToolCall{
-					ToolCallID: id,
-					ToolName:   toolCallNames[id],
-					Args:       []byte(args.String()),
-				})
-			}
-
-			result = &GenerateResult{
-				Text:            textBuilder.String(),
-				Reasoning:       reasoningBuilder.String(),
-				ToolCalls:       toolCalls,
-				FinishReason:    finishReason,
-				RawFinishReason: rawFinishReason,
-				Usage:           usage,
-				Metadata:        s.Metadata(),
-				Warnings:        warnings,
-			}
+			// Single-step path leaves Steps empty to preserve the
+			// historical shape where Steps is only populated for the
+			// tool loop.
+			result = resultFromStep(acc.buildStep(s.Metadata()))
 		}
 
 		s.mu.Lock()
@@ -238,30 +433,10 @@ func (s *StreamResult) consume(yield func(model.Chunk) bool) {
 	}()
 
 	for chunk := range s.stream {
-		switch c := chunk.(type) {
-		case model.TextDelta:
-			textBuilder.WriteString(c.Text)
-		case model.ReasoningDelta:
-			reasoningBuilder.WriteString(c.Text)
-		case model.ToolCallDelta:
-			if _, ok := toolCallArgs[c.ToolCallID]; !ok {
-				toolCallArgs[c.ToolCallID] = &strings.Builder{}
-			}
-			toolCallArgs[c.ToolCallID].WriteString(c.ArgsJSON)
-			if c.ToolName != "" {
-				toolCallNames[c.ToolCallID] = c.ToolName
-			}
-		case model.FinishChunk:
-			finishReason = c.FinishReason
-			rawFinishReason = c.RawFinishReason
-			if rawFinishReason == "" {
-				rawFinishReason = string(c.FinishReason)
-			}
-		case model.UsageChunk:
-			usage = c.Usage
-		case model.ProviderMetadataChunk:
+		acc.observe(chunk)
+		if meta, ok := chunk.(model.ProviderMetadataChunk); ok {
 			s.mu.Lock()
-			s.metadata = c.Metadata.Clone()
+			s.metadata = meta.Metadata.Clone()
 			s.mu.Unlock()
 		}
 
@@ -269,6 +444,82 @@ func (s *StreamResult) consume(yield func(model.Chunk) bool) {
 			return
 		}
 	}
+}
+
+// resultFromStep builds a single-step GenerateResult from the completed
+// step. It leaves Steps empty and uses the step's own usage as the
+// total; the tool-loop path calls buildResult instead.
+func resultFromStep(step Step) *GenerateResult {
+	return &GenerateResult{
+		Text:            step.Text,
+		Reasoning:       step.Reasoning,
+		Files:           step.Files,
+		Sources:         step.Sources,
+		ToolCalls:       step.ToolCalls,
+		FinishReason:    step.FinishReason,
+		RawFinishReason: step.RawFinishReason,
+		Usage:           step.Usage,
+		Metadata:        step.Metadata,
+		Warnings:        step.Warnings,
+	}
+}
+
+// fileFromChunk maps a streamed FileChunk to the consumer File type.
+// The types share a field layout, so the struct conversion is sound;
+// metadata is cloned to avoid aliasing into the chunk.
+func fileFromChunk(c model.FileChunk) File {
+	file := File(c)
+	file.Metadata = c.Metadata.Clone()
+
+	return file
+}
+
+// fileFromContent maps a non-streaming FileContent to the consumer File.
+func fileFromContent(c model.FileContent) File {
+	file := File(c)
+	file.Metadata = c.Metadata.Clone()
+
+	return file
+}
+
+// sourceFromChunk maps a streamed SourceChunk to the consumer Source.
+func sourceFromChunk(c model.SourceChunk) Source {
+	source := Source(c)
+	source.Metadata = c.Metadata.Clone()
+
+	return source
+}
+
+// sourceFromContent maps a non-streaming SourceContent to the consumer Source.
+func sourceFromContent(c model.SourceContent) Source {
+	source := Source(c)
+	source.Metadata = c.Metadata.Clone()
+
+	return source
+}
+
+// reasoningFromContent maps a non-streaming ReasoningContent to the
+// consumer Reasoning.
+func reasoningFromContent(c model.ReasoningContent) Reasoning {
+	reasoning := Reasoning(c)
+	reasoning.Metadata = c.Metadata.Clone()
+
+	return reasoning
+}
+
+func concatReasoning(blocks []Reasoning) string {
+	var b strings.Builder
+	for i, block := range blocks {
+		if block.Redacted || block.Text == "" {
+			continue
+		}
+		if i > 0 && b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(block.Text)
+	}
+
+	return b.String()
 }
 
 // addUsage accumulates step usage into a running total.
