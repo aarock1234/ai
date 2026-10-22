@@ -1,0 +1,161 @@
+[
+  {
+    "name": "askUserQuestions",
+    "commonName": "askUserQuestions",
+    "nativeName": "question",
+    "useKind": "readonly"
+  },
+  {
+    "name": "read",
+    "commonName": "read",
+    "nativeName": "view",
+    "useKind": "readonly",
+    "description": "Read file contents",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "write",
+    "commonName": "write",
+    "nativeName": "write",
+    "useKind": "edit",
+    "description": "Write content to a file",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "path": { "type": "string" },
+        "content": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "edit",
+    "commonName": "edit",
+    "nativeName": "edit",
+    "useKind": "edit",
+    "description": "Edit a file by replacing text",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "path": { "type": "string" },
+        "old_string": { "type": "string" },
+        "new_string": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "bash",
+    "commonName": "bash",
+    "nativeName": "bash",
+    "useKind": "bash",
+    "description": "Execute a shell command",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "glob",
+    "commonName": "glob",
+    "nativeName": "glob",
+    "useKind": "readonly",
+    "description": "Find files matching a glob pattern",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "grep",
+    "commonName": "grep",
+    "nativeName": "grep",
+    "useKind": "readonly",
+    "description": "Search file contents with regex",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "ls",
+    "description": "List directory contents",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "webfetch",
+    "description": "Fetch a URL",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "prompt": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "skill",
+    "description": "Load an OpenCode skill by name",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "todowrite",
+    "description": "Replace the OpenCode session todo list",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "todos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": { "type": "string" },
+              "status": { "type": "string" },
+              "priority": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "agent",
+    "description": "Run an OpenCode subagent",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "agent": { "type": "string" },
+        "prompt": { "type": "string" },
+        "description": { "type": "string" },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      }
+    }
+  }
+]

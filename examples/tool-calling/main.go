@@ -1,86 +1,103 @@
-// Use the automatic tool loop to let the model call tools and
-// incorporate results into its response.
+// Command tool-calling gives the model a typed tool and lets GenerateText run
+// the tool-calling loop: the model calls the tool, the SDK executes it and
+// sends the result back, and the model answers with the result.
 //
 // Usage:
 //
-//	OPENAI_API_KEY=sk-... go run ./examples/tool-calling
+//	OPENAI_API_KEY=... go run ./examples/tool-calling
 package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
-	"math"
+	"os"
+	"os/signal"
+	"strings"
 
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/provider/openai"
 )
 
+// WeatherInput is the input the model produces. The tool's JSON Schema is
+// derived from it.
 type WeatherInput struct {
-	City string `json:"city" jsonschema:"description=City name"`
+	City string `json:"city" jsonschema:"description=The city to look up"`
 }
 
-type CalculateInput struct {
-	Expression string `json:"expression" jsonschema:"description=A simple math expression like '2+2' or 'sqrt(16)'"`
+// WeatherReport is the output sent back to the model as JSON.
+type WeatherReport struct {
+	City        string `json:"city"`
+	Temperature int    `json:"temperatureCelsius"`
+	Condition   string `json:"condition"`
 }
 
 func main() {
-	ctx := context.Background()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	weather := ai.Tool{
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	provider := openai.New()
+
+	weather := ai.NewTool(ai.ToolDefinition[WeatherInput, WeatherReport]{
 		Name:        "get_weather",
 		Description: "Get the current weather for a city.",
-		InputSchema: ai.SchemaFor[WeatherInput](),
-		Execute: func(_ context.Context, input json.RawMessage) (string, error) {
-			var params WeatherInput
-			if err := json.Unmarshal(input, &params); err != nil {
-				return "", err
-			}
+		Execute:     lookUpWeather,
+	})
 
-			// Simulated weather data.
-			return fmt.Sprintf(`{"city": %q, "temp_f": 72, "condition": "sunny"}`, params.City), nil
+	result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+		Model: provider.Responses("gpt-5.4"),
+		Prompt: ai.Prompt{
+			Prompt: "Should I bring an umbrella in Tokyo or in Lisbon today?",
 		},
-	}
-
-	calculate := ai.Tool{
-		Name:        "calculate",
-		Description: "Evaluate a simple math expression.",
-		InputSchema: ai.SchemaFor[CalculateInput](),
-		Execute: func(_ context.Context, input json.RawMessage) (string, error) {
-			var params CalculateInput
-			if err := json.Unmarshal(input, &params); err != nil {
-				return "", err
-			}
-
-			// Tiny evaluator for demonstration.
-			if params.Expression == "sqrt(16)" {
-				return fmt.Sprintf("%g", math.Sqrt(16)), nil
-			}
-
-			return "unsupported expression", nil
+		Tools: []ai.Tool{
+			weather,
 		},
-	}
-
-	result, err := ai.GenerateText(ctx, openai.Chat(""),
-		ai.WithSystem("You are a helpful assistant. Use the provided tools when needed."),
-		ai.WithPrompt("What's the weather in Tokyo? Also, what is the square root of 16?"),
-		ai.WithTools(weather, calculate),
-		ai.WithMaxSteps(3),
-	)
+		// Without a stop condition, the loop ends after the first step.
+		StopWhen: []ai.StopCondition{
+			ai.IsStepCount(5),
+		},
+	})
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("generate text: %w", err)
 	}
 
+	for _, step := range result.Steps {
+		for _, call := range step.ToolCalls() {
+			fmt.Printf("step %d: %s(%s)\n", step.StepNumber+1, call.ToolName, call.Input)
+		}
+	}
+
+	fmt.Println()
 	fmt.Println(result.Text)
 
-	fmt.Printf("\nSteps: %d\n", len(result.Steps))
-	for i, step := range result.Steps {
-		fmt.Printf("  Step %d: finish=%s, tools=%d\n", i+1, step.FinishReason, len(step.ToolCalls))
+	return nil
+}
+
+// lookUpWeather returns simulated weather. A real tool would call a weather
+// API with ctx, which is cancelled when the generation is.
+func lookUpWeather(_ context.Context, input WeatherInput, _ ai.ToolExecutionOptions) (WeatherReport, error) {
+	city := strings.TrimSpace(input.City)
+	if city == "" {
+		return WeatherReport{}, errors.New("city is required")
 	}
 
-	fmt.Printf("\nTool results:\n")
-	for _, tr := range result.ToolResults {
-		fmt.Printf("  %s: %s\n", tr.ToolName, tr.Content)
+	report := WeatherReport{
+		City:        city,
+		Temperature: 21,
+		Condition:   "sunny",
 	}
+
+	if strings.EqualFold(city, "Tokyo") {
+		report.Temperature = 17
+		report.Condition = "light rain"
+	}
+
+	return report, nil
 }

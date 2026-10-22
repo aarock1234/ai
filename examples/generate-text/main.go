@@ -1,31 +1,63 @@
-// Generate text with a simple prompt and print the result.
+// Command generate-text generates text from a prompt and prints it with the
+// token usage.
 //
 // Usage:
 //
-//	OPENAI_API_KEY=sk-... go run ./examples/generate-text
+//	OPENAI_API_KEY=... go run ./examples/generate-text
 package main
 
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
+	"os/signal"
+	"strconv"
 
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/provider/openai"
 )
 
 func main() {
-	ctx := context.Background()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	result, err := ai.GenerateText(ctx, openai.Chat(""),
-		ai.WithSystem("You are a helpful assistant that responds concisely."),
-		ai.WithPrompt("Explain the difference between concurrency and parallelism in two sentences."),
-		ai.WithTemperature(0.7),
-	)
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	provider := openai.New()
+
+	result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+		Model: provider.Responses("gpt-5.4"),
+		Prompt: ai.Prompt{
+			System: "You are a concise assistant.",
+			Prompt: "Explain the difference between concurrency and parallelism in two sentences.",
+		},
+	})
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("generate text: %w", err)
 	}
 
 	fmt.Println(result.Text)
-	fmt.Printf("\nTokens: %d input, %d output\n", result.Usage.InputTokens, result.Usage.OutputTokens)
+	fmt.Println()
+	fmt.Printf("finish reason: %s\n", result.FinishReason)
+	fmt.Printf(
+		"tokens: %s input, %s output\n",
+		formatTokens(result.Usage.InputTokens),
+		formatTokens(result.Usage.OutputTokens),
+	)
+
+	return nil
+}
+
+// formatTokens prints a token count that the provider may not report.
+func formatTokens(count *int) string {
+	if count == nil {
+		return "unknown"
+	}
+
+	return strconv.Itoa(*count)
 }

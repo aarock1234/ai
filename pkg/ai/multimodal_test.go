@@ -392,9 +392,9 @@ func TestWithModalitiesAndAudio(t *testing.T) {
 	}
 }
 
-// TestErrorChunkSurfacesAsWarning verifies that an ErrorChunk in the
-// stream ends up as a warning on the final result.
-func TestErrorChunkSurfacesAsWarning(t *testing.T) {
+// TestErrorChunkSurfacesAsError verifies that an ErrorChunk in the
+// stream surfaces as an error from Result().
+func TestErrorChunkSurfacesAsError(t *testing.T) {
 	mock := &mockModel{
 		streamFn: func(_ context.Context, _ *model.Request) (*model.StreamResponse, error) {
 			return &model.StreamResponse{
@@ -416,14 +416,16 @@ func TestErrorChunkSurfacesAsWarning(t *testing.T) {
 	}
 
 	result, err := stream.Result()
-	if err != nil {
-		t.Fatalf("Result: %v", err)
+	if err == nil {
+		t.Fatal("expected error from ErrorChunk, got nil")
 	}
-
-	if len(result.Warnings) == 0 {
-		t.Fatal("expected warning from ErrorChunk")
+	if err.Error() != "transient glitch" {
+		t.Errorf("error = %q, want 'transient glitch'", err.Error())
 	}
-	if result.Warnings[0] != "transient glitch" {
-		t.Errorf("warning = %q, want 'transient glitch'", result.Warnings[0])
+	if result == nil {
+		t.Fatal("expected partial result alongside stream error")
+	}
+	if result.FinishReason != model.FinishReasonError {
+		t.Errorf("finish reason = %q, want error", result.FinishReason)
 	}
 }

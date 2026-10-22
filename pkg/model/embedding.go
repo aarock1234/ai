@@ -1,31 +1,50 @@
 package model
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
-// EmbeddingModel is the interface for text embedding providers.
-// It is separate from Model because embedding and generation are
-// distinct capabilities.
+// EmbeddingModel converts text into vectors.
 type EmbeddingModel interface {
-	// Provider returns the provider name (e.g. "openai").
 	Provider() string
-
-	// ModelID returns the model identifier (e.g. "text-embedding-3-small").
 	ModelID() string
 
-	// DoEmbed embeds the given texts and returns a vector for each input.
-	// Providers may impose their own limits on batch size.
-	DoEmbed(ctx context.Context, texts []string) (*EmbedResponse, error)
+	// MaxEmbeddingsPerCall returns the provider's batch limit, or zero when
+	// there is none.
+	MaxEmbeddingsPerCall() int
+
+	// SupportsParallelCalls reports whether batches may be sent concurrently.
+	SupportsParallelCalls() bool
+
+	Embed(ctx context.Context, options EmbedOptions) (*EmbedResult, error)
 }
 
-// EmbedResponse is the normalized response from an embedding request.
-type EmbedResponse struct {
-	// Embeddings contains one float64 slice per input text, in the same
-	// order as the input.
+// EmbedOptions are the inputs of one embedding call.
+type EmbedOptions struct {
+	Values []string
+
+	// Dimensions optionally requests a vector size.
+	Dimensions *int
+
+	Headers         http.Header
+	ProviderOptions ProviderOptions
+}
+
+// EmbedResult is the outcome of one embedding call.
+type EmbedResult struct {
+	// Embeddings has one vector per input value, in input order.
 	Embeddings [][]float64
 
-	// Usage tracks token consumption for the embedding request.
-	Usage Usage
+	// Usage is nil when the provider does not report it.
+	Usage *EmbeddingUsage
 
-	// Metadata carries provider/model response metadata when available.
-	Metadata ProviderMetadata
+	ProviderMetadata ProviderMetadata
+	Warnings         []Warning
+	Response         ResponseInfo
+}
+
+// EmbeddingUsage reports embedding token consumption.
+type EmbeddingUsage struct {
+	Tokens int
 }

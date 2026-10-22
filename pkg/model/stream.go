@@ -2,161 +2,133 @@ package model
 
 import "encoding/json"
 
-// Chunk is the interface for streaming response segments. Each chunk
-// carries a delta of the response as it arrives from the provider.
-type Chunk interface {
-	chunkType()
+// StreamPart is one event of a streaming call. Text, reasoning and tool input
+// arrive as start/delta/end sequences sharing an ID; complete items reuse the
+// Content types. A stream begins with StreamStart and ends with Finish.
+type StreamPart interface {
+	isStreamPart()
 }
 
-// StreamStartChunk signals the stream has begun and carries any warnings
-// the provider surfaced up front (e.g. unsupported settings).
-type StreamStartChunk struct {
-	Warnings []string
+// StreamStart opens the stream and reports call warnings.
+type StreamStart struct {
+	Warnings []Warning
 }
 
-func (StreamStartChunk) chunkType() {}
+// TextStart opens a text block.
+type TextStart struct {
+	ID               string
+	ProviderMetadata ProviderMetadata
+}
 
-// TextDelta is a partial text segment from a streaming response.
+// TextDelta appends to a text block.
 type TextDelta struct {
-	Text string
+	ID               string
+	Delta            string
+	ProviderMetadata ProviderMetadata
 }
 
-func (TextDelta) chunkType() {}
+// TextEnd closes a text block.
+type TextEnd struct {
+	ID               string
+	Citations        []Citation
+	ProviderMetadata ProviderMetadata
+}
 
-// ReasoningDelta is a partial reasoning segment from a streaming response.
-// Providers may interleave multiple reasoning streams; ID disambiguates
-// them when the provider surfaces per-block identifiers. Signature and
-// Format preserve provider-native reasoning metadata so the block can
-// be round-tripped back in a subsequent request.
+// ReasoningStart opens a reasoning block.
+type ReasoningStart struct {
+	ID               string
+	ProviderMetadata ProviderMetadata
+}
+
+// ReasoningDelta appends to a reasoning block.
 type ReasoningDelta struct {
-	// Text is the plaintext reasoning fragment. Empty for redacted blocks.
-	Text string
-
-	// ID is the provider-assigned identifier for the reasoning block
-	// this delta belongs to, when available.
-	ID string
-
-	// Signature is the provider's opaque signature for the block, when
-	// supplied.
-	Signature string
-
-	// Format identifies the reasoning block's provider-specific shape,
-	// when supplied.
-	Format string
-
-	// Redacted indicates the reasoning is encrypted or filtered. Text
-	// is empty in this case.
-	Redacted bool
+	ID               string
+	Delta            string
+	ProviderMetadata ProviderMetadata
 }
 
-func (ReasoningDelta) chunkType() {}
+// ReasoningEnd closes a reasoning block.
+type ReasoningEnd struct {
+	ID               string
+	ProviderMetadata ProviderMetadata
+}
 
-// ToolCallDelta is a partial tool call from a streaming response.
-// Tool calls may arrive across multiple deltas; the consumer
-// accumulates them by ToolCallID.
-type ToolCallDelta struct {
-	ToolCallID string
-	ToolName   string
-	ArgsJSON   string
+// ToolInputEncoding describes how tool input deltas are encoded.
+type ToolInputEncoding string
 
-	// ProviderExecuted is true when the provider ran the tool itself.
-	// Consumers should not execute the call locally.
+// Tool input encodings.
+const (
+	ToolInputJSON ToolInputEncoding = "json"
+	ToolInputText ToolInputEncoding = "text"
+)
+
+// ToolInputStart opens the input of a tool call. ID is the tool call ID.
+type ToolInputStart struct {
+	ID       string
+	ToolName string
+
+	// InputEncoding is empty for JSON.
+	InputEncoding ToolInputEncoding
+
 	ProviderExecuted bool
+	Dynamic          bool
+
+	// Title optionally describes the call for display.
+	Title string
+
+	ProviderMetadata ProviderMetadata
 }
 
-func (ToolCallDelta) chunkType() {}
-
-// ToolResultChunk delivers the result of a provider-executed tool call
-// inline with the stream.
-type ToolResultChunk struct {
-	ToolCallID string
-	ToolName   string
-	Content    string
-	IsError    bool
+// ToolInputDelta appends to a tool call's input.
+type ToolInputDelta struct {
+	ID               string
+	Delta            string
+	ProviderMetadata ProviderMetadata
 }
 
-func (ToolResultChunk) chunkType() {}
-
-// FileChunk delivers a complete file emitted by the model (typically a
-// generated image or audio clip). Providers deliver files as whole units
-// rather than as byte deltas.
-type FileChunk struct {
-	Data     []byte
-	URL      string
-	MIMEType string
-	Filename string
-	Metadata ProviderMetadata
+// ToolInputEnd closes a tool call's input. A ToolCall with the same ID
+// follows.
+type ToolInputEnd struct {
+	ID               string
+	ProviderMetadata ProviderMetadata
 }
 
-func (FileChunk) chunkType() {}
-
-// SourceChunk delivers a source citation observed mid-stream (e.g. a
-// web search citation).
-type SourceChunk struct {
-	SourceType SourceType
-	ID         string
-	URL        string
-	Title      string
-	MIMEType   string
-	Filename   string
-	StartIndex int
-	EndIndex   int
-	Metadata   ProviderMetadata
+// Finish ends the stream with usage and the finish reason.
+type Finish struct {
+	Usage            Usage
+	FinishReason     FinishReason
+	ProviderMetadata ProviderMetadata
 }
 
-func (SourceChunk) chunkType() {}
-
-// ProviderMetadataChunk carries provider/model streaming metadata that
-// becomes available mid-stream.
-type ProviderMetadataChunk struct {
-	Metadata ProviderMetadata
+// Raw carries one native provider event. It is emitted only when the call
+// options request raw chunks.
+type Raw struct {
+	Value json.RawMessage
 }
 
-func (ProviderMetadataChunk) chunkType() {}
-
-// FinishChunk signals that the model has stopped generating.
-type FinishChunk struct {
-	FinishReason    FinishReason
-	RawFinishReason string
-}
-
-func (FinishChunk) chunkType() {}
-
-// UsageChunk carries token usage information, typically sent as the
-// final chunk in a stream.
-type UsageChunk struct {
-	Usage Usage
-}
-
-func (UsageChunk) chunkType() {}
-
-// ErrorChunk signals that the provider reported a recoverable error
-// during the stream. Callers may continue reading subsequent chunks,
-// but a FinishChunk with FinishReasonError is expected to follow.
-type ErrorChunk struct {
+// StreamError reports a failure inside the stream.
+type StreamError struct {
 	Err error
 }
 
-// Error reports the underlying provider error.
-func (c ErrorChunk) Error() string {
-	if c.Err == nil {
-		return "stream error"
-	}
-
-	return c.Err.Error()
-}
-
-// Unwrap exposes the underlying error for errors.Is / errors.As.
-func (c ErrorChunk) Unwrap() error { return c.Err }
-
-func (ErrorChunk) chunkType() {}
-
-// RawChunk is a passthrough of the provider's raw event payload. It is
-// emitted only when a provider is configured to include raw frames and
-// is primarily useful for debugging or implementing provider-specific
-// functionality on top of the SDK.
-type RawChunk struct {
-	Data json.RawMessage
-}
-
-func (RawChunk) chunkType() {}
+func (StreamStart) isStreamPart()         {}
+func (TextStart) isStreamPart()           {}
+func (TextDelta) isStreamPart()           {}
+func (TextEnd) isStreamPart()             {}
+func (ReasoningStart) isStreamPart()      {}
+func (ReasoningDelta) isStreamPart()      {}
+func (ReasoningEnd) isStreamPart()        {}
+func (ToolInputStart) isStreamPart()      {}
+func (ToolInputDelta) isStreamPart()      {}
+func (ToolInputEnd) isStreamPart()        {}
+func (ToolApprovalRequest) isStreamPart() {}
+func (ToolCall) isStreamPart()            {}
+func (ToolResult) isStreamPart()          {}
+func (Custom) isStreamPart()              {}
+func (File) isStreamPart()                {}
+func (ReasoningFile) isStreamPart()       {}
+func (Source) isStreamPart()              {}
+func (ResponseMetadata) isStreamPart()    {}
+func (Finish) isStreamPart()              {}
+func (Raw) isStreamPart()                 {}
+func (StreamError) isStreamPart()         {}

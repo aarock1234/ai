@@ -1,0 +1,119 @@
+[
+  {
+    "name": "read",
+    "commonName": "read",
+    "nativeName": "read",
+    "useKind": "readonly",
+    "description": "Read file contents. Output is limited to 2,000 lines or 50KB. Use offset and limit to read large files in pages.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "offset": { "type": "integer", "exclusiveMinimum": 0 },
+        "limit": { "type": "integer", "exclusiveMinimum": 0 }
+      },
+      "required": ["file_path"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "write",
+    "commonName": "write",
+    "nativeName": "write",
+    "useKind": "edit",
+    "description": "Overwrite or create a file.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["file_path", "content"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "edit",
+    "commonName": "edit",
+    "nativeName": "edit",
+    "useKind": "edit",
+    "description": "Edit a file by exact string replacement.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "old_string": { "type": "string" },
+        "new_string": { "type": "string" }
+      },
+      "required": ["file_path", "old_string", "new_string"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "bash",
+    "commonName": "bash",
+    "nativeName": "bash",
+    "useKind": "bash",
+    "description": "Execute a shell command in the sandbox.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": { "type": "string" },
+        "timeout": { "type": "number" }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "grep",
+    "commonName": "grep",
+    "nativeName": "grep",
+    "useKind": "readonly",
+    "description": "Search file contents with regex.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "path": { "type": "string" },
+        "glob": { "type": "string" },
+        "ignoreCase": { "type": "boolean" },
+        "literal": { "type": "boolean" },
+        "context": { "type": "number" },
+        "limit": { "type": "number" }
+      },
+      "required": ["pattern"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "glob",
+    "commonName": "glob",
+    "nativeName": "find",
+    "useKind": "readonly",
+    "description": "Find files matching a glob pattern.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "path": { "type": "string" },
+        "limit": { "type": "number" }
+      },
+      "required": ["pattern"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ls",
+    "useKind": "readonly",
+    "description": "List directory entries.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "limit": { "type": "number" }
+      },
+      "additionalProperties": false
+    }
+  }
+]

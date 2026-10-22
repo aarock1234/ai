@@ -5,51 +5,80 @@ import (
 	"net/http"
 )
 
-// ImageModel is the interface for image generation providers.
+// ImageModel generates or edits images.
 type ImageModel interface {
-	// Provider returns the provider name (e.g. "openai").
 	Provider() string
-
-	// ModelID returns the model identifier.
 	ModelID() string
 
-	// DoGenerateImage performs an image generation request.
-	DoGenerateImage(ctx context.Context, req *ImageRequest) (*ImageResponse, error)
+	// MaxImagesPerCall returns the provider's per-call limit, or zero when
+	// there is none.
+	MaxImagesPerCall() int
+
+	Generate(ctx context.Context, options ImageOptions) (*ImageResult, error)
 }
 
-// ImageInput is an input image for image generation or editing.
-type ImageInput struct {
-	URL      string
-	Data     []byte
-	MIMEType string
-	Filename string
-}
+// ImageOptions are the inputs of one image call. Empty values leave the
+// provider default.
+type ImageOptions struct {
+	Prompt string
 
-// ImageRequest is the normalized request shape for image generation.
-type ImageRequest struct {
-	Prompt          string
-	Images          []ImageInput
-	Size            string
-	Quality         string
-	Background      string
-	OutputFormat    string
-	OutputCompress  *int
-	Count           int
+	// N is the number of images to generate.
+	N int
+
+	// Size has the form "1024x1024".
+	Size string
+
+	// AspectRatio has the form "16:9".
+	AspectRatio string
+
+	Seed *int
+
+	// Files are input images for editing or variation.
+	Files []ImageFile
+
+	// Mask optionally marks the region to edit.
+	Mask ImageFile
+
 	Headers         http.Header
 	ProviderOptions ProviderOptions
 }
 
-// GeneratedImage is a single generated image.
-type GeneratedImage struct {
-	URL           string
-	Data          []byte
-	MIMEType      string
-	RevisedPrompt string
+// ImageFile is an input image: ImageBytes or ImageURL.
+type ImageFile interface {
+	isImageFile()
 }
 
-// ImageResponse is the normalized response from an image request.
-type ImageResponse struct {
-	Images   []GeneratedImage
-	Usage    Usage
-	Metadata ProviderMetadata
+// ImageBytes is an inline input image.
+type ImageBytes struct {
+	MediaType       string
+	Data            []byte
+	ProviderOptions ProviderOptions
+}
+
+// ImageURL is an input image the provider downloads.
+type ImageURL struct {
+	URL             string
+	ProviderOptions ProviderOptions
+}
+
+func (ImageBytes) isImageFile() {}
+func (ImageURL) isImageFile()   {}
+
+// ImageResult is the outcome of one image call.
+type ImageResult struct {
+	Images [][]byte
+
+	// Usage is nil when the provider does not report it.
+	Usage *ImageUsage
+
+	ProviderMetadata ProviderMetadata
+	Warnings         []Warning
+	Response         ResponseInfo
+}
+
+// ImageUsage reports image token consumption. Nil counts were not reported.
+type ImageUsage struct {
+	InputTokens  *int
+	OutputTokens *int
+	TotalTokens  *int
 }

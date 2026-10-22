@@ -1,58 +1,66 @@
-// Embed texts and compute cosine similarity between them.
+// Command embeddings embeds a query and a few documents in one EmbedMany call
+// and ranks the documents by their cosine similarity to the query.
 //
 // Usage:
 //
-//	OPENAI_API_KEY=sk-... go run ./examples/embeddings
+//	OPENAI_API_KEY=... go run ./examples/embeddings
 package main
 
 import (
 	"context"
 	"fmt"
-	"log"
-	"math"
+	"os"
+	"os/signal"
 
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/provider/openai"
 )
 
 func main() {
-	ctx := context.Background()
-	model := openai.Embedding("text-embedding-3-small")
-
-	texts := []string{
-		"The cat sat on the mat.",
-		"A kitten rested on the rug.",
-		"The stock market closed higher today.",
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
-
-	result, err := ai.EmbedMany(ctx, model, texts)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("Cosine similarity:")
-	for i := range texts {
-		for j := i + 1; j < len(texts); j++ {
-			sim := cosineSimilarity(result.Embeddings[i], result.Embeddings[j])
-			fmt.Printf("  [%d] vs [%d]: %.4f  (%q vs %q)\n", i, j, sim, texts[i], texts[j])
-		}
-	}
-
-	fmt.Printf("\nTokens used: %d\n", result.Usage.InputTokens)
 }
 
-func cosineSimilarity(a, b []float64) float64 {
-	var dot, normA, normB float64
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
-	for i := range a {
-		dot += a[i] * b[i]
-		normA += a[i] * a[i]
-		normB += b[i] * b[i]
+	provider := openai.New()
+
+	query := "How do I cancel a running operation?"
+	documents := []string{
+		"A context carries deadlines and cancellation signals across API boundaries.",
+		"Slices are views over an underlying array.",
+		"Goroutines are lightweight threads managed by the Go runtime.",
 	}
 
-	if normA == 0 || normB == 0 {
-		return 0
+	result, err := ai.EmbedMany(ctx, ai.EmbedManyOptions{
+		Model:  provider.Embedding("text-embedding-3-small"),
+		Values: append([]string{query}, documents...),
+	})
+	if err != nil {
+		return fmt.Errorf("embed values: %w", err)
 	}
 
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+	queryEmbedding := result.Embeddings[0]
+	documentEmbeddings := result.Embeddings[1:]
+
+	fmt.Printf("query: %s\n\n", query)
+
+	for index, document := range documents {
+		similarity, err := ai.CosineSimilarity(queryEmbedding, documentEmbeddings[index])
+		if err != nil {
+			return fmt.Errorf("compare embeddings: %w", err)
+		}
+
+		fmt.Printf("%.3f  %s\n", similarity, document)
+	}
+
+	if result.Usage != nil {
+		fmt.Printf("\ntokens: %d\n", result.Usage.Tokens)
+	}
+
+	return nil
 }

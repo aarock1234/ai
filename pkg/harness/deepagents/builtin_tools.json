@@ -1,0 +1,120 @@
+[
+  {
+    "name": "read",
+    "commonName": "read",
+    "nativeName": "read_file",
+    "useKind": "readonly",
+    "description": "Read file contents",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" }
+      },
+      "required": ["file_path"]
+    }
+  },
+  {
+    "name": "write",
+    "commonName": "write",
+    "nativeName": "write_file",
+    "useKind": "edit",
+    "description": "Create a file",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["file_path", "content"]
+    }
+  },
+  {
+    "name": "edit",
+    "commonName": "edit",
+    "nativeName": "edit_file",
+    "useKind": "edit",
+    "description": "Perform exact string replacements in a file",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "old_string": { "type": "string" },
+        "new_string": { "type": "string" }
+      },
+      "required": ["file_path", "old_string", "new_string"]
+    }
+  },
+  {
+    "name": "bash",
+    "commonName": "bash",
+    "nativeName": "execute",
+    "useKind": "bash",
+    "description": "Run a shell command",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": { "type": "string" }
+      },
+      "required": ["command"]
+    }
+  },
+  {
+    "name": "grep",
+    "commonName": "grep",
+    "nativeName": "grep",
+    "useKind": "readonly",
+    "description": "Search file contents",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" }
+      },
+      "required": ["pattern"]
+    }
+  },
+  {
+    "name": "glob",
+    "commonName": "glob",
+    "nativeName": "glob",
+    "useKind": "readonly",
+    "description": "Find files matching a glob pattern",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" }
+      },
+      "required": ["pattern"]
+    }
+  },
+  {
+    "name": "ls",
+    "description": "List files in a directory",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "task",
+    "description": "Spawn a subagent to handle a delegated task",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "subagent_type": { "type": "string" }
+      }
+    }
+  },
+  {
+    "name": "write_todos",
+    "description": "Manage a structured todo list",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "todos": { "type": "array", "items": {} }
+      }
+    }
+  }
+]

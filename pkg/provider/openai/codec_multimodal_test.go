@@ -499,7 +499,7 @@ func TestEncodeRequestModalities(t *testing.T) {
 		},
 	}
 
-	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false)
+	chatReq, err := openai.EncodeRequest("gpt-5.4", req, false, openai.WithReasoningShape(openai.ReasoningShapeOpenRouter))
 	if err != nil {
 		t.Fatalf("EncodeRequest: %v", err)
 	}

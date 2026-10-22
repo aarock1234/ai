@@ -1,58 +1,72 @@
-// Use the provider registry for config-driven provider selection.
-// The provider and model are chosen at runtime from environment
-// variables instead of being hardcoded.
+// Command multi-provider registers several providers in a Registry and selects
+// the language model at runtime from a combined "provider:model" ID.
 //
 // Usage:
 //
-//	AI_PROVIDER=openai AI_MODEL=gpt-5.4 OPENAI_API_KEY=sk-... go run ./examples/multi-provider
-//	AI_PROVIDER=openrouter AI_MODEL=openai/gpt-5.4 OPENROUTER_API_KEY=sk-... go run ./examples/multi-provider
+//	OPENAI_API_KEY=... go run ./examples/multi-provider openai:gpt-5.4
+//	ANTHROPIC_API_KEY=... go run ./examples/multi-provider anthropic:claude-sonnet-4-5
+//	GOOGLE_GENERATIVE_AI_API_KEY=... go run ./examples/multi-provider google:gemini-3-flash-preview
 package main
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
+	"os/signal"
 
 	"github.com/aarock1234/ai/pkg/ai"
-	"github.com/aarock1234/ai/pkg/provider"
+	"github.com/aarock1234/ai/pkg/model"
+	"github.com/aarock1234/ai/pkg/provider/anthropic"
+	"github.com/aarock1234/ai/pkg/provider/google"
 	"github.com/aarock1234/ai/pkg/provider/openai"
-	"github.com/aarock1234/ai/pkg/provider/openrouter"
 )
 
+const defaultModelID = "openai:gpt-5.4"
+
 func main() {
-	providerName := envOrDefault("AI_PROVIDER", "openai")
-	modelID := envOrDefault("AI_MODEL", "gpt-5.4")
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	// Register all available providers.
-	registry := provider.NewRegistry()
-	registry.Register("openai", openai.New())
-	registry.Register("openrouter", openrouter.New())
-
-	// Look up the provider by name.
-	p, ok := registry.Get(providerName)
-	if !ok {
-		log.Fatalf("unknown provider: %s", providerName)
+func run() error {
+	modelID := defaultModelID
+	if len(os.Args) > 1 {
+		modelID = os.Args[1]
 	}
 
-	fmt.Printf("Using provider=%s model=%s\n\n", providerName, modelID)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
-	ctx := context.Background()
+	// Providers read their API keys from the environment when a request is
+	// sent, so registering a provider without a key is harmless.
+	registry := ai.NewRegistry(ai.RegistryOptions{
+		Providers: map[string]model.Provider{
+			"anthropic": anthropic.New(),
+			"google":    google.New(),
+			"openai":    openai.New(),
+		},
+	})
 
-	result, err := ai.GenerateText(ctx, p.Chat(modelID),
-		ai.WithPrompt("Say hello and tell me which model you are."),
-	)
+	languageModel, err := registry.LanguageModel(modelID)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("resolve model %s: %w", modelID, err)
+	}
+
+	fmt.Printf("using %s (%s)\n\n", languageModel.ModelID(), languageModel.Provider())
+
+	result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+		Model: languageModel,
+		Prompt: ai.Prompt{
+			Prompt: "Introduce yourself in one sentence.",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("generate text with %s: %w", modelID, err)
 	}
 
 	fmt.Println(result.Text)
-}
 
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-
-	return fallback
+	return nil
 }

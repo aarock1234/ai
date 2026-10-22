@@ -190,6 +190,158 @@ func TestEncodeRequestReasoningPartToThinkingBlock(t *testing.T) {
 	}
 }
 
+// TestEncodeRequestThinkingBudget verifies that reasoning options map
+// to the thinking wire config with the expected budget and that
+// max_tokens is bumped above the budget when necessary.
+func TestEncodeRequestThinkingBudget(t *testing.T) {
+	tests := []struct {
+		name          string
+		reasoning     *model.ReasoningOptions
+		maxTokens     *int
+		wantBudget    int
+		wantMaxTokens int
+	}{
+		{
+			name:          "low effort",
+			reasoning:     &model.ReasoningOptions{Effort: "low"},
+			wantBudget:    2048,
+			wantMaxTokens: 3072,
+		},
+		{
+			name:          "medium effort",
+			reasoning:     &model.ReasoningOptions{Effort: "medium"},
+			wantBudget:    8192,
+			wantMaxTokens: 9216,
+		},
+		{
+			name:          "high effort",
+			reasoning:     &model.ReasoningOptions{Effort: "high"},
+			wantBudget:    24576,
+			wantMaxTokens: 25600,
+		},
+		{
+			name:          "empty effort defaults to medium",
+			reasoning:     &model.ReasoningOptions{},
+			wantBudget:    8192,
+			wantMaxTokens: 9216,
+		},
+		{
+			name:          "max tokens override wins over effort",
+			reasoning:     &model.ReasoningOptions{Effort: "high", MaxTokens: 4000},
+			wantBudget:    4000,
+			wantMaxTokens: 5024,
+		},
+		{
+			name:          "sufficient max tokens preserved",
+			reasoning:     &model.ReasoningOptions{Effort: "low"},
+			maxTokens:     intPtr(10000),
+			wantBudget:    2048,
+			wantMaxTokens: 10000,
+		},
+		{
+			name:          "equal max tokens bumped",
+			reasoning:     &model.ReasoningOptions{Effort: "low"},
+			maxTokens:     intPtr(2048),
+			wantBudget:    2048,
+			wantMaxTokens: 3072,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgReq, err := anthropic.EncodeRequest("claude-sonnet-4-5", &model.Request{
+				Messages: []model.Message{{
+					Role:  model.RoleUser,
+					Parts: []model.Part{model.TextPart{Text: "think"}},
+				}},
+				MaxTokens: tt.maxTokens,
+				Reasoning: tt.reasoning,
+			}, false)
+			if err != nil {
+				t.Fatalf("EncodeRequest: %v", err)
+			}
+
+			body, err := anthropic.MarshalRequest(msgReq)
+			if err != nil {
+				t.Fatalf("MarshalRequest: %v", err)
+			}
+
+			var raw struct {
+				MaxTokens int `json:"max_tokens"`
+				Thinking  *struct {
+					Type         string `json:"type"`
+					BudgetTokens int    `json:"budget_tokens"`
+				} `json:"thinking"`
+			}
+			if err := json.Unmarshal(body, &raw); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			if raw.Thinking == nil {
+				t.Fatal("thinking missing from request body")
+			}
+			if raw.Thinking.Type != "enabled" {
+				t.Errorf("thinking.type = %q, want enabled", raw.Thinking.Type)
+			}
+			if raw.Thinking.BudgetTokens != tt.wantBudget {
+				t.Errorf("budget_tokens = %d, want %d", raw.Thinking.BudgetTokens, tt.wantBudget)
+			}
+			if raw.MaxTokens != tt.wantMaxTokens {
+				t.Errorf("max_tokens = %d, want %d", raw.MaxTokens, tt.wantMaxTokens)
+			}
+		})
+	}
+}
+
+// TestEncodeRequestThinkingStripsSamplingParams verifies that
+// temperature, top_p, and top_k are dropped with warnings when thinking
+// is enabled.
+func TestEncodeRequestThinkingStripsSamplingParams(t *testing.T) {
+	temperature := 0.7
+	topP := 0.9
+	topK := 40
+
+	msgReq, err := anthropic.EncodeRequest("claude-sonnet-4-5", &model.Request{
+		Messages: []model.Message{{
+			Role:  model.RoleUser,
+			Parts: []model.Part{model.TextPart{Text: "think"}},
+		}},
+		Temperature: &temperature,
+		TopP:        &topP,
+		TopK:        &topK,
+		Reasoning:   &model.ReasoningOptions{Effort: "low"},
+	}, false)
+	if err != nil {
+		t.Fatalf("EncodeRequest: %v", err)
+	}
+
+	body, err := anthropic.MarshalRequest(msgReq)
+	if err != nil {
+		t.Fatalf("MarshalRequest: %v", err)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, key := range []string{"temperature", "top_p", "top_k"} {
+		if _, present := raw[key]; present {
+			t.Errorf("%s should be dropped when thinking is enabled", key)
+		}
+	}
+
+	if len(msgReq.Warnings) != 3 {
+		t.Fatalf("warnings = %d, want 3: %v", len(msgReq.Warnings), msgReq.Warnings)
+	}
+
+	for i, param := range []string{"temperature", "top_p", "top_k"} {
+		if !strings.Contains(msgReq.Warnings[i], param) {
+			t.Errorf("warning[%d] = %q, want mention of %s", i, msgReq.Warnings[i], param)
+		}
+	}
+}
+
 // TestDecodeStreamThinkingBlocks verifies streamed thinking deltas
 // produce ReasoningDelta chunks with the anthropic format marker.
 func TestDecodeStreamThinkingBlocks(t *testing.T) {

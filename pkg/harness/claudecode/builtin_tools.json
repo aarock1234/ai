@@ -1,0 +1,930 @@
+[
+  {
+    "name": "read",
+    "commonName": "read",
+    "nativeName": "Read",
+    "useKind": "readonly",
+    "description": "Read file contents (text, image, PDF, notebook)",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "offset": { "type": "number" },
+        "limit": { "type": "number" },
+        "pages": { "type": "string" }
+      },
+      "required": ["file_path"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "write",
+    "commonName": "write",
+    "nativeName": "Write",
+    "useKind": "edit",
+    "description": "Overwrite or create a file at an absolute path",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "content": { "type": "string" }
+      },
+      "required": ["file_path", "content"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "edit",
+    "commonName": "edit",
+    "nativeName": "Edit",
+    "useKind": "edit",
+    "description": "Edit a file by exact string replacement",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_path": { "type": "string" },
+        "old_string": { "type": "string" },
+        "new_string": { "type": "string" },
+        "replace_all": { "type": "boolean" }
+      },
+      "required": ["file_path", "old_string", "new_string"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "bash",
+    "commonName": "bash",
+    "nativeName": "Bash",
+    "useKind": "bash",
+    "description": "Execute a shell command, optionally in background",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": { "type": "string" },
+        "timeout": { "type": "number" },
+        "description": { "type": "string" },
+        "run_in_background": { "type": "boolean" },
+        "dangerouslyDisableSandbox": { "type": "boolean" }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "glob",
+    "commonName": "glob",
+    "nativeName": "Glob",
+    "useKind": "readonly",
+    "description": "Fast file-pattern search using glob syntax",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "required": ["pattern"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "grep",
+    "commonName": "grep",
+    "nativeName": "Grep",
+    "useKind": "readonly",
+    "description": "Regex search over file contents via ripgrep",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "path": { "type": "string" },
+        "glob": { "type": "string" },
+        "output_mode": {
+          "type": "string",
+          "enum": ["content", "files_with_matches", "count"]
+        },
+        "-B": { "type": "number" },
+        "-A": { "type": "number" },
+        "-C": { "type": "number" },
+        "context": { "type": "number" },
+        "-n": { "type": "boolean" },
+        "-i": { "type": "boolean" },
+        "-o": { "type": "boolean" },
+        "type": { "type": "string" },
+        "head_limit": { "type": "number" },
+        "offset": { "type": "number" },
+        "multiline": { "type": "boolean" }
+      },
+      "required": ["pattern"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "webSearch",
+    "commonName": "webSearch",
+    "nativeName": "WebSearch",
+    "useKind": "readonly",
+    "description": "Issue web search queries with optional domain filters",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
+        "allowed_domains": { "type": "array", "items": { "type": "string" } },
+        "blocked_domains": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "WebFetch",
+    "description": "Fetch a URL and run a prompt against its content",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "prompt": { "type": "string" }
+      },
+      "required": ["url", "prompt"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "NotebookEdit",
+    "description": "Edit, insert, or delete a Jupyter notebook cell",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "notebook_path": { "type": "string" },
+        "new_source": { "type": "string" },
+        "cell_id": { "type": "string" },
+        "cell_type": { "type": "string", "enum": ["code", "markdown"] },
+        "edit_mode": { "type": "string", "enum": ["replace", "insert", "delete"] }
+      },
+      "required": ["notebook_path", "new_source"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TodoWrite",
+    "description": "Replace the session todo list",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "todos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["pending", "in_progress", "completed"]
+              },
+              "activeForm": { "type": "string" }
+            },
+            "required": ["content", "status", "activeForm"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["todos"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Agent",
+    "description": "Spawn a subagent with a task",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "prompt": { "type": "string" },
+        "subagent_type": { "type": "string" },
+        "model": { "type": "string", "enum": ["sonnet", "opus", "haiku"] },
+        "run_in_background": { "type": "boolean" },
+        "name": { "type": "string" },
+        "team_name": { "type": "string" },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "acceptEdits",
+            "auto",
+            "bypassPermissions",
+            "default",
+            "dontAsk",
+            "plan"
+          ]
+        },
+        "isolation": { "type": "string", "const": "worktree" }
+      },
+      "required": ["description", "prompt"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TaskCreate",
+    "description": "Create a task in the session-local task list",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "activeForm": { "type": "string" },
+        "metadata": { "type": "object", "additionalProperties": {} }
+      },
+      "required": ["subject", "description"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TaskGet",
+    "description": "Retrieve a task by id",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" }
+      },
+      "required": ["taskId"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TaskUpdate",
+    "description": "Update fields of an existing task",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "activeForm": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "completed", "deleted"]
+        },
+        "addBlocks": { "type": "array", "items": { "type": "string" } },
+        "addBlockedBy": { "type": "array", "items": { "type": "string" } },
+        "owner": { "type": "string" },
+        "metadata": { "type": "object", "additionalProperties": {} }
+      },
+      "required": ["taskId"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TaskList",
+    "description": "Return all tasks in the session-local task list",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TaskStop",
+    "description": "Stop a running background task by id",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": { "type": "string" },
+        "shell_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "TaskOutput",
+    "description": "Poll for output from a background task",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": { "type": "string" },
+        "block": { "type": "boolean" },
+        "timeout": { "type": "number" }
+      },
+      "required": ["task_id", "block", "timeout"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Monitor",
+    "useKind": "bash",
+    "description": "Run and monitor a shell command or WebSocket",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "timeout_ms": { "type": "number" },
+        "persistent": { "type": "boolean" },
+        "command": { "type": "string" },
+        "ws": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "protocols": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["url"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ListAgents",
+    "useKind": "readonly",
+    "description": "List agents that can receive messages",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Not available in this build; leave unset."
+        },
+        "q": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Not available in this build; leave unset."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ListMcpResources",
+    "useKind": "readonly",
+    "description": "List resources available from MCP servers",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ListMcpResourcesTool",
+    "useKind": "readonly",
+    "description": "List resources available from MCP servers",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ReadMcpResource",
+    "useKind": "readonly",
+    "description": "Read a specific MCP resource by URI",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string" },
+        "uri": { "type": "string" }
+      },
+      "required": ["server", "uri"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ReadMcpResourceTool",
+    "useKind": "readonly",
+    "description": "Read a specific MCP resource by URI",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string" },
+        "uri": { "type": "string" }
+      },
+      "required": ["server", "uri"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ReadMcpResourceDirTool",
+    "useKind": "readonly",
+    "description": "List direct children of an MCP directory resource",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string" },
+        "uri": { "type": "string" }
+      },
+      "required": ["server", "uri"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "RefreshMcpTools",
+    "useKind": "readonly",
+    "description": "Refresh tools from one or all connected MCP servers",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ExitPlanMode",
+    "description": "Exit plan mode with optional permission approvals",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "allowedPrompts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tool": { "type": "string", "const": "Bash" },
+              "prompt": { "type": "string" }
+            },
+            "required": ["tool", "prompt"],
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "EnterPlanMode",
+    "useKind": "readonly",
+    "description": "Enter plan mode",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "EnterWorktree",
+    "description": "Create or enter an isolated git worktree",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ExitWorktree",
+    "description": "Exit the current worktree session",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["keep", "remove"] },
+        "discard_changes": { "type": "boolean" }
+      },
+      "required": ["action"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "askUserQuestions",
+    "commonName": "askUserQuestions",
+    "nativeName": "AskUserQuestion",
+    "useKind": "readonly"
+  },
+  {
+    "name": "Skill",
+    "useKind": "readonly",
+    "description": "Activate a skill by name",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "skill": { "type": "string" },
+        "args": { "type": "string" }
+      },
+      "required": ["skill"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ToolSearch",
+    "description": "Search deferred MCP / catalog tools so the model can load them on demand",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
+        "max_results": { "type": "number" }
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Artifact",
+    "useKind": "edit",
+    "description": "Publish or list claude.ai artifacts",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "enum": ["publish", "list"] },
+        "file_path": { "type": "string" },
+        "favicon": { "type": "string" },
+        "limit": { "type": "number" },
+        "scope": { "type": "string", "enum": ["mine", "shared", "all"] },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "label": { "type": "string" },
+        "url": { "type": "string" },
+        "force": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "CronCreate",
+    "useKind": "edit",
+    "description": "Schedule a recurring or one-shot prompt",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "cron": { "type": "string" },
+        "prompt": { "type": "string" },
+        "recurring": { "type": "boolean" },
+        "durable": { "type": "boolean" }
+      },
+      "required": ["cron", "prompt"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "CronDelete",
+    "useKind": "edit",
+    "description": "Delete a scheduled prompt by id",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "CronList",
+    "useKind": "readonly",
+    "description": "List scheduled prompts for the current session",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "DesignSync",
+    "useKind": "edit",
+    "description": "Read or update claude.ai Design projects",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "list_projects",
+            "get_project",
+            "list_files",
+            "get_file",
+            "finalize_plan",
+            "write_files",
+            "delete_files",
+            "register_assets",
+            "unregister_assets",
+            "create_project",
+            "report_validate"
+          ]
+        },
+        "projectId": { "type": "string" },
+        "path": { "type": "string" },
+        "writes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 256
+        },
+        "deletes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 256
+        },
+        "planId": { "type": "string" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "localPath": { "type": "string" },
+              "data": { "type": "string" },
+              "encoding": { "type": "string", "const": "base64" },
+              "mimeType": { "type": "string" }
+            },
+            "required": ["path"],
+            "additionalProperties": false
+          },
+          "maxItems": 256
+        },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 256
+        },
+        "name": { "type": "string" },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "path": { "type": "string" },
+              "subtitle": { "type": "string" },
+              "viewport": {
+                "type": "object",
+                "properties": {
+                  "width": { "type": "number" },
+                  "height": { "type": "number" }
+                },
+                "required": ["width"],
+                "additionalProperties": false
+              },
+              "group": { "type": "string" }
+            },
+            "required": ["name", "path"],
+            "additionalProperties": false
+          },
+          "maxItems": 256
+        },
+        "localDir": { "type": "string" },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "total": { "type": "number" },
+            "bad": { "type": "number" },
+            "thin": { "type": "number" },
+            "variantsIdentical": { "type": "number" },
+            "iterations": { "type": "number" }
+          },
+          "required": ["total", "bad", "thin", "variantsIdentical", "iterations"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["method"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "LSP",
+    "useKind": "readonly",
+    "description": "Query a language server for code intelligence",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "goToDefinition",
+            "findReferences",
+            "hover",
+            "documentSymbol",
+            "workspaceSymbol",
+            "goToImplementation",
+            "prepareCallHierarchy",
+            "incomingCalls",
+            "outgoingCalls"
+          ]
+        },
+        "filePath": { "type": "string" },
+        "line": { "type": "integer", "exclusiveMinimum": 0 },
+        "character": { "type": "integer", "exclusiveMinimum": 0 },
+        "query": { "type": "string" }
+      },
+      "required": ["operation", "filePath", "line", "character"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "PowerShell",
+    "useKind": "bash",
+    "description": "Execute a PowerShell command, optionally in background",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": { "type": "string" },
+        "timeout": { "type": "number" },
+        "description": { "type": "string" },
+        "run_in_background": { "type": "boolean" },
+        "dangerouslyDisableSandbox": { "type": "boolean" }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "PushNotification",
+    "useKind": "edit",
+    "description": "Send a notification for proactive or scheduled work",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "status": { "type": "string", "const": "proactive" }
+      },
+      "required": ["message", "status"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "RemoteTrigger",
+    "useKind": "edit",
+    "description": "List, manage, or run a claude.ai Routine trigger",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["list", "get", "create", "update", "run"]
+        },
+        "trigger_id": { "type": "string" },
+        "body": { "type": "object", "additionalProperties": {} }
+      },
+      "required": ["action"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ReportFindings",
+    "useKind": "readonly",
+    "description": "Return verified code-review findings",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "xhigh", "max"]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "string" },
+              "line": { "type": "number" },
+              "summary": { "type": "string" },
+              "short_summary": { "type": "string" },
+              "failure_scenario": { "type": "string" },
+              "category": { "type": "string" },
+              "verdict": { "type": "string", "enum": ["CONFIRMED", "PLAUSIBLE"] },
+              "outcome": {
+                "type": "string",
+                "enum": ["fixed", "skipped", "no_change_needed"]
+              }
+            },
+            "required": ["file", "summary", "failure_scenario"],
+            "additionalProperties": false
+          },
+          "maxItems": 32
+        }
+      },
+      "required": ["findings"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ScheduleWakeup",
+    "useKind": "edit",
+    "description": "Schedule or stop the next iteration of a dynamic loop",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "delaySeconds": { "type": "number" },
+        "reason": { "type": "string" },
+        "prompt": { "type": "string" },
+        "stop": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "SendMessage",
+    "useKind": "edit",
+    "description": "Send a plain-text or protocol message to another agent",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "to": { "type": "string" },
+        "summary": { "type": "string", "maxLength": 200 },
+        "message": {
+          "anyOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "shutdown_request" },
+                "reason": { "type": "string" }
+              },
+              "required": ["type"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "shutdown_response" },
+                "request_id": { "type": "string" },
+                "approve": { "type": "boolean" },
+                "reason": { "type": "string" }
+              },
+              "required": ["type", "request_id", "approve"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "plan_approval_response" },
+                "request_id": { "type": "string" },
+                "approve": { "type": "boolean" },
+                "feedback": { "type": "string" }
+              },
+              "required": ["type", "request_id", "approve"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": ["to", "message"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "SendUserFile",
+    "useKind": "readonly",
+    "description": "Send one or more files to the user",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "anyOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ]
+        },
+        "caption": { "type": "string" },
+        "status": { "type": "string", "enum": ["normal", "proactive"] },
+        "display": { "type": "string", "enum": ["render", "attach"] }
+      },
+      "required": ["files", "status"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "ShareOnboardingGuide",
+    "useKind": "edit",
+    "description": "Create, update, inspect, or delete an onboarding guide",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["check", "update", "create", "delete"]
+        },
+        "short_code": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "WaitForMcpServers",
+    "useKind": "readonly",
+    "description": "Wait for MCP servers that are still connecting",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "servers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "Workflow",
+    "useKind": "edit",
+    "description": "Run or resume a dynamic multi-agent workflow",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "script": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "title": { "type": "string" },
+        "args": { "type": "object", "additionalProperties": {} },
+        "scriptPath": { "type": "string" },
+        "resumeFromRunId": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+]

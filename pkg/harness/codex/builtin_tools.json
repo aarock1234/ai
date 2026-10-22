@@ -1,0 +1,55 @@
+[
+  {
+    "name": "bash",
+    "commonName": "bash",
+    "nativeName": "shell",
+    "useKind": "bash",
+    "description": "Execute a shell command",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "command": { "type": "string" }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "webSearch",
+    "commonName": "webSearch",
+    "nativeName": "web_search",
+    "useKind": "readonly",
+    "description": "Search the web",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" }
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "apply_patch",
+    "useKind": "edit",
+    "description": "Apply a patch to files",
+    "inputSchema": {
+      "type": "string"
+    }
+  },
+  {
+    "name": "view_image",
+    "useKind": "readonly",
+    "description": "View a local image file",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "detail": { "type": "string", "enum": ["high", "original"] },
+        "environment_id": { "type": "string" }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    }
+  }
+]

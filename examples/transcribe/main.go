@@ -1,14 +1,17 @@
-// Transcribe an audio file to text.
+// Command transcribe converts an audio file to text and prints the transcript
+// with its timed segments.
 //
 // Usage:
 //
-//	OPENAI_API_KEY=sk-... go run ./examples/transcribe path\\to\\audio.mp3
+//	OPENAI_API_KEY=... go run ./examples/transcribe path/to/audio.mp3
 package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/model"
@@ -16,26 +19,52 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: go run ./examples/transcribe path\\to\\audio.mp3")
+		return errors.New("usage: transcribe path/to/audio.mp3")
 	}
 
-	audioData, err := os.ReadFile(os.Args[1])
+	audioPath := os.Args[1]
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	audio, err := os.ReadFile(audioPath)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("read audio: %w", err)
 	}
 
-	ctx := context.Background()
+	provider := openai.New()
 
-	result, err := ai.Transcribe(ctx, openai.Transcription("gpt-4o-mini-transcribe"), model.TranscriptionRequest{
-		Audio: model.AudioInput{
-			Data:     audioData,
-			Filename: os.Args[1],
+	result, err := ai.Transcribe(ctx, ai.TranscribeOptions{
+		Model: provider.Transcription("gpt-4o-mini-transcribe"),
+		Audio: model.FileBytes{
+			Data: audio,
 		},
 	})
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("transcribe %s: %w", audioPath, err)
 	}
 
-	log.Print(result.Text)
+	fmt.Println(result.Text)
+
+	if result.Language != "" {
+		fmt.Printf("\nlanguage: %s\n", result.Language)
+	}
+
+	if result.Duration > 0 {
+		fmt.Printf("duration: %s\n", result.Duration)
+	}
+
+	for _, segment := range result.Segments {
+		fmt.Printf("[%s - %s] %s\n", segment.Start, segment.End, segment.Text)
+	}
+
+	return nil
 }

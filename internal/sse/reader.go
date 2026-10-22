@@ -1,82 +1,165 @@
-// Package sse provides a generic Server-Sent Events reader that parses
-// the SSE wire format from an io.Reader into an iterator of events.
+// Package sse reads Server-Sent Events streams.
 package sse
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"strings"
 )
 
-// Event is a single SSE event parsed from the wire format.
+const (
+	maxLineBytes  = 4 << 20
+	maxEventBytes = 8 << 20
+)
+
+// ErrEventTooLarge reports a line or event above the buffering limits.
+var ErrEventTooLarge = errors.New("sse event exceeds size limit")
+
+// Event is one dispatched event.
 type Event struct {
-	// Type is the event type from the "event:" field. Empty string
-	// means the default message type.
+	// Type is the "event" field; empty means the default "message" type.
 	Type string
 
-	// Data is the event payload from the "data:" field. Multiple data
-	// lines within the same event are joined with newlines.
+	// Data joins the event's "data" lines with newlines.
 	Data string
 
-	// ID is the event ID from the "id:" field.
+	// ID is the most recent "id" field, which persists across events.
 	ID string
 }
 
-// Read parses SSE events from r and yields them lazily. It stops when
-// r returns io.EOF or when the caller breaks out of the range loop.
-// The [DONE] sentinel (used by OpenAI-compatible APIs) is recognized
-// and terminates the iterator without yielding an event.
-func Read(r io.Reader) iter.Seq[Event] {
-	return func(yield func(Event) bool) {
+// Read parses events from r. It accepts LF, CRLF and CR line endings and
+// ignores comments and unknown fields. As the specification requires, an
+// event without a terminating blank line at EOF is discarded; providers detect
+// truncation through their own terminal events. Read does not close r.
+func Read(r io.Reader) iter.Seq2[Event, error] {
+	return func(yield func(Event, error) bool) {
 		scanner := bufio.NewScanner(r)
-		var current Event
-		hasData := false
+		scanner.Buffer(make([]byte, 0, 64<<10), maxLineBytes)
+		scanner.Split(splitLines)
 
+		var parser parser
 		for scanner.Scan() {
-			line := scanner.Text()
+			event, ready, err := parser.line(scanner.Text())
+			if err != nil {
+				yield(Event{}, err)
 
-			// Blank line = event boundary. Dispatch if we accumulated data.
-			if line == "" {
-				if hasData {
-					current.Data = strings.TrimSuffix(current.Data, "\n")
-					if !yield(current) {
-						return
-					}
-				}
-				current = Event{}
-				hasData = false
-
-				continue
+				return
 			}
 
-			// Skip SSE comments.
-			if strings.HasPrefix(line, ":") {
-				continue
-			}
-
-			field, value, _ := strings.Cut(line, ":")
-			value = strings.TrimPrefix(value, " ")
-
-			switch field {
-			case "data":
-				// The [DONE] sentinel terminates the stream.
-				if value == "[DONE]" {
-					return
-				}
-				current.Data += value + "\n"
-				hasData = true
-			case "event":
-				current.Type = value
-			case "id":
-				current.ID = value
+			if ready && !yield(event, nil) {
+				return
 			}
 		}
 
-		// Flush any trailing event without a final blank line.
-		if hasData {
-			current.Data = strings.TrimSuffix(current.Data, "\n")
-			yield(current)
+		if err := scanner.Err(); err != nil {
+			if errors.Is(err, bufio.ErrTooLong) {
+				err = ErrEventTooLarge
+			}
+			yield(Event{}, fmt.Errorf("read sse stream: %w", err))
 		}
 	}
+}
+
+// parser accumulates the fields of one event.
+type parser struct {
+	eventType string
+	data      strings.Builder
+	hasData   bool
+	lastID    string
+	size      int
+	started   bool
+}
+
+// line consumes one line and reports a completed event when the line ends it.
+func (p *parser) line(line string) (Event, bool, error) {
+	if !p.started {
+		line = strings.TrimPrefix(line, "\uFEFF")
+		p.started = true
+	}
+
+	if line == "" {
+		event, ready := p.dispatch()
+
+		return event, ready, nil
+	}
+
+	p.size += len(line) + 1
+	if p.size > maxEventBytes {
+		return Event{}, false, ErrEventTooLarge
+	}
+
+	if strings.HasPrefix(line, ":") {
+		return Event{}, false, nil
+	}
+
+	field, value, _ := strings.Cut(line, ":")
+	value = strings.TrimPrefix(value, " ")
+
+	switch field {
+	case "data":
+		p.data.WriteString(value)
+		p.data.WriteByte('\n')
+		p.hasData = true
+
+	case "event":
+		p.eventType = value
+
+	case "id":
+		if !strings.ContainsRune(value, 0) {
+			p.lastID = value
+		}
+	}
+
+	return Event{}, false, nil
+}
+
+// dispatch returns the accumulated event, if it has data, and resets the
+// per-event fields.
+func (p *parser) dispatch() (Event, bool) {
+	event := Event{
+		Type: p.eventType,
+		Data: strings.TrimSuffix(p.data.String(), "\n"),
+		ID:   p.lastID,
+	}
+	ready := p.hasData
+
+	p.eventType = ""
+	p.data.Reset()
+	p.hasData = false
+	p.size = 0
+
+	return event, ready
+}
+
+// splitLines splits on LF, CRLF or a lone CR.
+func splitLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	for index, value := range data {
+		if value == '\n' {
+			return index + 1, data[:index], nil
+		}
+
+		if value != '\r' {
+			continue
+		}
+
+		next := index + 1
+		if next == len(data) && !atEOF {
+			return 0, nil, nil
+		}
+
+		if next < len(data) && data[next] == '\n' {
+			return next + 1, data[:index], nil
+		}
+
+		return next, data[:index], nil
+	}
+
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+
+	return 0, nil, nil
 }

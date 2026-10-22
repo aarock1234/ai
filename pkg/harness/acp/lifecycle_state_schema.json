@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["implementationIdentity"],
+  "properties": {
+    "implementationIdentity": {
+      "type": "string"
+    },
+    "authenticationProfile": {
+      "type": "object",
+      "required": ["digest", "providerKind"],
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "acpMethodId": {
+          "type": "string"
+        },
+        "providerKind": {
+          "enum": ["implementation-default", "direct", "ai-gateway"]
+        },
+        "providerMode": {
+          "enum": ["auto", "direct", "ai-gateway"]
+        },
+        "gatewayCredentialSource": {
+          "enum": ["AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN", null]
+        }
+      }
+    },
+    "sandboxCredentialEnvironment": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "acpSessionId": {
+      "type": "string"
+    },
+    "bridge": {
+      "type": "object",
+      "required": ["port", "token", "lastSeenEventId"],
+      "properties": {
+        "port": {
+          "type": "number"
+        },
+        "token": {
+          "type": "string"
+        },
+        "lastSeenEventId": {
+          "type": "number"
+        },
+        "sandboxId": {
+          "type": "string"
+        },
+        "stateDir": {
+          "type": "string"
+        }
+      }
+    },
+    "coldSession": {
+      "$ref": "#/$defs/startConfiguration"
+    },
+    "turnStartConfig": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/startConfiguration"
+        },
+        {
+          "type": "object",
+          "required": ["prompt"],
+          "properties": {
+            "prompt": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["type", "text"],
+                "properties": {
+                  "type": {
+                    "const": "text"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "model": {
+              "type": "string"
+            },
+            "modelMapping": {
+              "type": "object",
+              "required": ["type", "path"],
+              "properties": {
+                "type": {
+                  "enum": ["session-config-option", "session-model"]
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "debug": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "recovery": {
+      "type": "object",
+      "required": ["mode", "reason"],
+      "properties": {
+        "mode": {
+          "enum": ["disk-replay", "lossy-rerun"]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "restoration": {
+      "type": "object",
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "enum": ["resume", "load"]
+        }
+      }
+    },
+    "initialGuidanceApplied": {
+      "type": "boolean"
+    },
+    "instructionsFingerprint": {
+      "type": "string"
+    },
+    "skillsDirectory": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "startConfiguration": {
+      "type": "object",
+      "required": ["version", "configurationFingerprint", "permissionMode"],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "configurationFingerprint": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "builtinTools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["toolName"],
+            "properties": {
+              "toolName": {
+                "type": "string"
+              },
+              "nativeName": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "toolUseKind": {
+                "enum": ["readonly", "edit", "bash"]
+              }
+            }
+          }
+        },
+        "permissionMode": {
+          "enum": ["allow-reads", "allow-edits", "allow-all"]
+        },
+        "permissionModeMapping": {
+          "type": "object",
+          "required": ["allow-reads", "allow-edits", "allow-all"],
+          "properties": {
+            "allow-reads": {
+              "$ref": "#/$defs/permissionModeTarget"
+            },
+            "allow-edits": {
+              "$ref": "#/$defs/permissionModeTarget"
+            },
+            "allow-all": {
+              "$ref": "#/$defs/permissionModeTarget"
+            }
+          }
+        },
+        "responseFormat": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "enum": ["text", "json"]
+            }
+          }
+        },
+        "outputSchemaMapping": {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": {
+              "const": "session-prompt-meta"
+            },
+            "path": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "permissionModeTarget": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": ["type", "modeId"],
+          "properties": {
+            "type": {
+              "const": "session-mode"
+            },
+            "modeId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "configId", "value"],
+          "properties": {
+            "type": {
+              "const": "session-config-option"
+            },
+            "configId": {
+              "type": "string"
+            },
+            "value": {
+              "type": ["string", "boolean"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

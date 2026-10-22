@@ -102,8 +102,8 @@ func TestEncodeRequestSystemMessagePartsUseSeparators(t *testing.T) {
 		t.Fatalf("EncodeRequest: %v", err)
 	}
 
-	if msgReq.System != "First instruction.\n\nSecond instruction." {
-		t.Errorf("system = %q, want separated system parts", msgReq.System)
+	if msgReq.System.Text != "First instruction.\n\nSecond instruction." {
+		t.Errorf("system = %q, want separated system parts", msgReq.System.Text)
 	}
 }
 

@@ -535,8 +535,9 @@ func TestStreamTextChunks(t *testing.T) {
 		count++
 	}
 
-	if count != 2 {
-		t.Errorf("chunk count = %d, want 2", count)
+	// Provider chunks plus the synthesized StepStart/StepFinish pair.
+	if count != 4 {
+		t.Errorf("chunk count = %d, want 4", count)
 	}
 }
 

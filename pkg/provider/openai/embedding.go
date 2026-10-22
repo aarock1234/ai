@@ -1,107 +1,173 @@
 package openai
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 
-	"github.com/aarock1234/ai/internal/apierror"
+	"github.com/aarock1234/ai/internal/apicall"
 	"github.com/aarock1234/ai/pkg/model"
 )
 
-// Compile-time check that EmbeddingModel implements model.EmbeddingModel.
-var _ model.EmbeddingModel = (*EmbeddingModel)(nil)
+// embeddingMaxValuesPerCall is the most inputs one embeddings request accepts.
+const embeddingMaxValuesPerCall = 2048
 
-// EmbeddingModel is an OpenAI embedding model that implements
-// model.EmbeddingModel.
+// EmbeddingOptions are the embedding settings read from the "openai"
+// provider options namespace.
+type EmbeddingOptions struct {
+	// Dimensions sets the size of the output vectors. It overrides
+	// EmbedOptions.Dimensions and needs text-embedding-3 or a later model.
+	Dimensions *int `json:"dimensions,omitempty"`
+
+	// User identifies the end user for abuse monitoring.
+	User string `json:"user,omitempty"`
+}
+
+// EmbeddingModel is an OpenAI text embedding model.
 type EmbeddingModel struct {
-	modelID      string
-	clientConfig *ClientConfig
+	modelID string
+	config  config
 }
 
-// Provider returns "openai".
-func (m *EmbeddingModel) Provider() string { return "openai" }
+func newEmbeddingModel(modelID string, c config) *EmbeddingModel {
+	return &EmbeddingModel{
+		modelID: modelID,
+		config:  c,
+	}
+}
 
-// ModelID returns the model identifier (e.g. "text-embedding-3-small").
-func (m *EmbeddingModel) ModelID() string { return m.modelID }
+// Provider returns the provider identifier, such as "openai.embedding".
+func (m *EmbeddingModel) Provider() string {
+	return m.config.modelProvider("embedding")
+}
 
-// embeddingRequest is the OpenAI embeddings request body.
+// ModelID returns the model identifier.
+func (m *EmbeddingModel) ModelID() string {
+	return m.modelID
+}
+
+// MaxEmbeddingsPerCall returns 2048.
+func (m *EmbeddingModel) MaxEmbeddingsPerCall() int {
+	return embeddingMaxValuesPerCall
+}
+
+// SupportsParallelCalls reports that batches may be sent concurrently.
+func (m *EmbeddingModel) SupportsParallelCalls() bool {
+	return true
+}
+
+// embeddingRequest is the body of an embeddings request.
 type embeddingRequest struct {
-	Model string   `json:"model"`
-	Input []string `json:"input"`
+	Model          string   `json:"model"`
+	Input          []string `json:"input"`
+	EncodingFormat string   `json:"encoding_format"`
+	Dimensions     *int     `json:"dimensions,omitempty"`
+	User           string   `json:"user,omitempty"`
 }
 
-// embeddingResponse is the OpenAI embeddings response.
+// embeddingResponse is an embeddings response.
 type embeddingResponse struct {
 	Data  []embeddingData `json:"data"`
-	Usage embeddingUsage  `json:"usage"`
+	Usage *embeddingUsage `json:"usage"`
 }
 
+// embeddingData is one embedding vector.
 type embeddingData struct {
 	Embedding []float64 `json:"embedding"`
-	Index     int       `json:"index"`
 }
 
+// embeddingUsage is the token usage of an embeddings call.
 type embeddingUsage struct {
 	PromptTokens int `json:"prompt_tokens"`
-	TotalTokens  int `json:"total_tokens"`
 }
 
-// DoEmbed embeds the given texts using the OpenAI embeddings API.
-func (m *EmbeddingModel) DoEmbed(ctx context.Context, texts []string) (*model.EmbedResponse, error) {
-	reqBody := embeddingRequest{
-		Model: m.modelID,
-		Input: texts,
+// Embed converts values into vectors in one request.
+func (m *EmbeddingModel) Embed(ctx context.Context, options model.EmbedOptions) (*model.EmbedResult, error) {
+	if len(options.Values) > embeddingMaxValuesPerCall {
+		return nil, fmt.Errorf(
+			"%w: %s model %q accepts at most %d values per call, got %d",
+			model.ErrInvalidArgument,
+			m.Provider(),
+			m.modelID,
+			embeddingMaxValuesPerCall,
+			len(options.Values),
+		)
 	}
 
-	body, err := json.Marshal(reqBody)
+	openaiOptions, _, err := model.ProviderValue[EmbeddingOptions](options.ProviderOptions, Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("marshalling request: %w", err)
+		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", m.clientConfig.BaseURL+"/embeddings", bytes.NewReader(body))
+	dimensions := options.Dimensions
+	if openaiOptions.Dimensions != nil {
+		dimensions = openaiOptions.Dimensions
+	}
+
+	request, err := m.config.request(ctx, "/embeddings", options.Headers)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, err
 	}
 
-	setHeaders(httpReq, m.clientConfig, nil)
-
-	resp, err := m.clientConfig.httpClient().Do(httpReq)
+	response, err := apicall.PostJSON(ctx, request, embeddingRequest{
+		Model:          m.modelID,
+		Input:          options.Values,
+		EncodingFormat: "float",
+		Dimensions:     dimensions,
+		User:           openaiOptions.User,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("executing request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, apierror.New(resp.StatusCode, string(respBody))
+	var decoded embeddingResponse
+	if err := apicall.DecodeJSON(response.Body, &decoded); err != nil {
+		return nil, err
 	}
 
-	var result embeddingResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+	if err := decoded.validate(); err != nil {
+		return nil, err
 	}
 
-	// Sort by index to ensure correct ordering.
-	embeddings := make([][]float64, len(result.Data))
-	for _, d := range result.Data {
-		embeddings[d.Index] = d.Embedding
-	}
-
-	return &model.EmbedResponse{
-		Embeddings: embeddings,
-		Usage: model.Usage{
-			InputTokens: result.Usage.PromptTokens,
-		},
-		Metadata: model.ProviderMetadata{
-			ModelID: m.modelID,
+	return &model.EmbedResult{
+		Embeddings: embeddingVectors(decoded.Data),
+		Usage:      embeddingResultUsage(decoded.Usage),
+		Response: model.ResponseInfo{
+			Headers: response.Headers,
+			Body:    response.Body,
 		},
 	}, nil
+}
+
+// validate checks that the response has a vector for every data item.
+func (r embeddingResponse) validate() error {
+	if r.Data == nil {
+		return fmt.Errorf("%w: response has no data", model.ErrInvalidResponse)
+	}
+
+	for index, item := range r.Data {
+		if item.Embedding == nil {
+			return fmt.Errorf("%w: data item %d has no embedding", model.ErrInvalidResponse, index)
+		}
+	}
+
+	return nil
+}
+
+func embeddingVectors(data []embeddingData) [][]float64 {
+	vectors := make([][]float64, 0, len(data))
+	for _, item := range data {
+		vectors = append(vectors, item.Embedding)
+	}
+
+	return vectors
+}
+
+func embeddingResultUsage(usage *embeddingUsage) *model.EmbeddingUsage {
+	if usage == nil {
+		return nil
+	}
+
+	return &model.EmbeddingUsage{
+		Tokens: usage.PromptTokens,
+	}
 }

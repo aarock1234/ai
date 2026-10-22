@@ -1,59 +1,88 @@
-// Generate structured output and unmarshal it into a Go type.
-// The SDK derives the JSON Schema from the type automatically.
+// Command generate-object generates structured output with GenerateText and
+// ObjectOutput. The JSON Schema sent to the model is derived from the Recipe
+// type, and the validated output is decoded into it.
 //
 // Usage:
 //
-//	OPENAI_API_KEY=sk-... go run ./examples/generate-object
+//	OPENAI_API_KEY=... go run ./examples/generate-object
 package main
 
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
+	"os/signal"
 
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/provider/openai"
 )
 
-// Recipe is the structured output type. The JSON tags control the
-// schema field names, and jsonschema tags add descriptions.
+// Recipe is the structured output. Its json tags name the schema properties,
+// and its jsonschema tags describe them to the model.
 type Recipe struct {
-	Name        string       `json:"name"        jsonschema:"description=Name of the dish"`
-	Cuisine     string       `json:"cuisine"      jsonschema:"description=Type of cuisine"`
-	PrepTime    string       `json:"prep_time"    jsonschema:"description=Preparation time"`
+	Name        string       `json:"name" jsonschema:"description=The name of the dish"`
+	Servings    int          `json:"servings"`
 	Ingredients []Ingredient `json:"ingredients"`
-	Steps       []string     `json:"steps"        jsonschema:"description=Step-by-step instructions"`
+	Steps       []string     `json:"steps" jsonschema:"description=Preparation steps in order"`
 }
 
+// Ingredient is one ingredient of a Recipe.
 type Ingredient struct {
 	Name   string `json:"name"`
-	Amount string `json:"amount"`
+	Amount string `json:"amount" jsonschema:"description=Quantity with its unit"`
 }
 
 func main() {
-	ctx := context.Background()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	result, err := ai.GenerateObject[Recipe](ctx, openai.Chat(""),
-		ai.WithPrompt("A recipe for chicken tikka masala."),
-	)
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	provider := openai.New()
+
+	result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+		Model: provider.Responses("gpt-5.4"),
+		Prompt: ai.Prompt{
+			Prompt: "Give me a simple recipe for pancakes.",
+		},
+		Output: ai.ObjectOutput[Recipe](ai.ObjectOutputOptions{
+			Name:        "recipe",
+			Description: "A cooking recipe",
+		}),
+	})
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("generate recipe: %w", err)
 	}
 
-	r := result.Object
-
-	fmt.Printf("%s (%s)\n", r.Name, r.Cuisine)
-	fmt.Printf("Prep time: %s\n\n", r.PrepTime)
-
-	fmt.Println("Ingredients:")
-	for _, ing := range r.Ingredients {
-		fmt.Printf("  - %s %s\n", ing.Amount, ing.Name)
+	recipe, err := ai.OutputAs[Recipe](result.Output)
+	if err != nil {
+		return fmt.Errorf("read recipe: %w", err)
 	}
 
-	fmt.Println("\nSteps:")
-	for i, step := range r.Steps {
-		fmt.Printf("  %d. %s\n", i+1, step)
+	printRecipe(recipe)
+
+	return nil
+}
+
+func printRecipe(recipe Recipe) {
+	fmt.Printf("%s (serves %d)\n", recipe.Name, recipe.Servings)
+
+	fmt.Println()
+	fmt.Println("ingredients:")
+
+	for _, ingredient := range recipe.Ingredients {
+		fmt.Printf("  - %s %s\n", ingredient.Amount, ingredient.Name)
 	}
 
-	fmt.Printf("\nTokens: %d total\n", result.Usage.TotalTokens())
+	fmt.Println()
+	fmt.Println("steps:")
+
+	for number, step := range recipe.Steps {
+		fmt.Printf("  %d. %s\n", number+1, step)
+	}
 }

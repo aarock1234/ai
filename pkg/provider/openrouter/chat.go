@@ -2,80 +2,157 @@ package openrouter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/aarock1234/ai/pkg/model"
-	oai "github.com/aarock1234/ai/pkg/provider/openai"
+	"github.com/aarock1234/ai/pkg/provider/openaicompatible"
 )
 
-// Compile-time check that ChatModel implements model.Model.
-var _ model.Model = (*ChatModel)(nil)
-
-// ChatModel is an OpenRouter chat completion model that implements
-// model.Model. It delegates to the OpenAI codec since OpenRouter
-// uses the OpenAI-compatible wire format.
+// ChatModel is an OpenRouter chat model. It sends OpenAI-compatible chat
+// completions and adds OpenRouter's response extensions: reasoning details,
+// generated images and web citations.
 type ChatModel struct {
-	modelID      string
-	clientConfig *oai.ClientConfig
+	provider   string
+	chat       *openaicompatible.ChatModel
+	generateID func() string
 }
 
-// Provider returns "openrouter".
-func (m *ChatModel) Provider() string { return "openrouter" }
+// Provider returns the provider identifier, "openrouter.chat" by default.
+func (m *ChatModel) Provider() string {
+	return m.provider
+}
 
-// ModelID returns the model identifier (e.g. "openai/gpt-5.4").
-func (m *ChatModel) ModelID() string { return m.modelID }
+// ModelID returns the OpenRouter model identifier.
+func (m *ChatModel) ModelID() string {
+	return m.chat.ModelID()
+}
 
-// SupportsResponseFormat reports whether this model supports native structured output.
-// OpenRouter routes requests across heterogeneous upstream models, so the SDK
-// defaults to the provider-agnostic fallback path instead of assuming native support.
-func (m *ChatModel) SupportsResponseFormat(_ *model.ResponseFormat) bool { return false }
+// SupportedURLs reports that OpenRouter downloads image URLs itself.
+func (m *ChatModel) SupportedURLs() map[string][]*regexp.Regexp {
+	return m.chat.SupportedURLs()
+}
 
-// DoGenerate sends a non-streaming chat completion request and returns
-// the normalized response.
-func (m *ChatModel) DoGenerate(ctx context.Context, req *model.Request) (*model.Response, error) {
-	chatReq, err := oai.EncodeRequest(m.modelID, req, false)
-	if err != nil {
-		return nil, fmt.Errorf("encoding request: %w", err)
-	}
-
-	chatResp, err := oai.DoRequest(ctx, m.clientConfig, chatReq)
+// Generate performs a non-streaming chat completion.
+func (m *ChatModel) Generate(ctx context.Context, options model.CallOptions) (*model.GenerateResult, error) {
+	options, err := prepareCall(options)
 	if err != nil {
 		return nil, err
 	}
 
-	return oai.DecodeResponse(chatResp), nil
-}
-
-// DoStream sends a streaming chat completion request and returns a
-// StreamResponse whose iterator yields chunks as they arrive. The
-// HTTP response body is closed automatically when the stream is fully
-// consumed or the caller breaks out of the range loop.
-func (m *ChatModel) DoStream(ctx context.Context, req *model.Request) (*model.StreamResponse, error) {
-	chatReq, err := oai.EncodeRequest(m.modelID, req, true)
-	if err != nil {
-		return nil, fmt.Errorf("encoding request: %w", err)
-	}
-
-	body, err := oai.DoStreamRequest(ctx, m.clientConfig, chatReq)
+	result, err := m.chat.Generate(ctx, options)
 	if err != nil {
 		return nil, err
 	}
 
-	raw := oai.DecodeStream(body)
+	var extensions responseExtensions
+	if err := json.Unmarshal(result.Response.Body, &extensions); err != nil {
+		return nil, fmt.Errorf("%w: %w", model.ErrInvalidResponse, err)
+	}
 
-	// Wrap the iterator to close the response body when done.
-	wrapped := func(yield func(model.Chunk) bool) {
-		defer func() { _ = body.Close() }()
+	content, err := extendContent(result.Content, extensions.first(), m.generateID)
+	if err != nil {
+		return nil, err
+	}
 
-		for chunk := range raw {
-			if !yield(chunk) {
-				return
-			}
+	result.Content = content
+
+	return result, nil
+}
+
+// Stream performs a streaming chat completion.
+func (m *ChatModel) Stream(ctx context.Context, options model.CallOptions) (*model.StreamResult, error) {
+	options, err := prepareCall(options)
+	if err != nil {
+		return nil, err
+	}
+
+	// The extensions are read from the raw chunks, which are passed on only
+	// when the caller asked for them.
+	includeRawChunks := options.IncludeRawChunks
+	options.IncludeRawChunks = true
+
+	inner, err := m.chat.Stream(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+
+	stream := &extensionStream{
+		includeRawChunks: includeRawChunks,
+		generateID:       m.generateID,
+	}
+
+	result := model.NewStreamResult(stream.parts(inner.Parts()), inner.Close)
+	result.Request = inner.Request
+	result.Response = inner.Response
+
+	return result, nil
+}
+
+// prepareCall validates the OpenRouter options and moves replayed reasoning
+// details onto their assistant messages.
+func prepareCall(options model.CallOptions) (model.CallOptions, error) {
+	if _, err := readChatOptions(options.ProviderOptions); err != nil {
+		return model.CallOptions{}, err
+	}
+
+	prompt, err := replayReasoningDetails(options.Prompt)
+	if err != nil {
+		return model.CallOptions{}, err
+	}
+
+	options.Prompt = prompt
+
+	return options, nil
+}
+
+// extendContent attaches the reasoning details to the reasoning and appends
+// generated images and citation sources.
+func extendContent(content []model.Content, extensions messageExtensions, generateID func() string) ([]model.Content, error) {
+	extended := attachReasoningDetails(content, extensions.ReasoningDetails)
+
+	files, err := imageFiles(extensions.Images)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		extended = append(extended, file)
+	}
+
+	for _, source := range citationSources(extensions.Annotations, generateID) {
+		extended = append(extended, source)
+	}
+
+	return extended, nil
+}
+
+// attachReasoningDetails stores the details on the first reasoning content.
+// Reasoning that has no text, such as encrypted reasoning, gets an empty
+// reasoning item so that it can be replayed.
+func attachReasoningDetails(content []model.Content, details []ReasoningDetail) []model.Content {
+	if len(details) == 0 {
+		return content
+	}
+
+	for index, item := range content {
+		reasoning, ok := item.(model.Reasoning)
+		if !ok {
+			continue
 		}
+
+		reasoning.ProviderMetadata = reasoningMetadata(details)
+		content[index] = reasoning
+
+		return content
 	}
 
-	return &model.StreamResponse{
-		Stream:   wrapped,
-		Metadata: model.ProviderMetadata{ModelID: m.modelID},
-	}, nil
+	reasoning := model.Reasoning{
+		ProviderMetadata: reasoningMetadata(details),
+	}
+
+	return append([]model.Content{reasoning}, content...)
 }
+
+var _ model.LanguageModel = (*ChatModel)(nil)
