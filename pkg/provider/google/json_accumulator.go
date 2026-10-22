@@ -234,7 +234,7 @@ func (a *argumentAccumulator) beginChild(segment pathSegment) string {
 func parsePath(rawPath string) []pathSegment {
 	var segments []pathSegment
 
-	for _, piece := range strings.Split(rawPath, ".") {
+	for piece := range strings.SplitSeq(rawPath, ".") {
 		bracket := strings.Index(piece, "[")
 		if bracket == -1 {
 			segments = append(segments, pathSegment{

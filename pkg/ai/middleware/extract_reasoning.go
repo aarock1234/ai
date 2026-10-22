@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -144,9 +145,9 @@ func extractReasoningContent(
 // joining the surrounding text with the separator when both sides are
 // non-empty.
 func removeSections(text string, matches [][]int, separator string) string {
-	for index := len(matches) - 1; index >= 0; index-- {
-		before := text[:matches[index][0]]
-		after := text[matches[index][1]:]
+	for _, section := range slices.Backward(matches) {
+		before := text[:section[0]]
+		after := text[section[1]:]
 
 		if before != "" && after != "" {
 			text = before + separator + after

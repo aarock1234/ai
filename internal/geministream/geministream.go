@@ -68,11 +68,9 @@ func Start(ctx context.Context, transcription Transcription) (*model.Transcripti
 	}
 
 	result.Response = model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: transcription.Timestamp,
-			ModelID:   transcription.ModelID,
-		},
-		Headers: conn.ResponseHeader(),
+		Timestamp: transcription.Timestamp,
+		ModelID:   transcription.ModelID,
+		Headers:   conn.ResponseHeader(),
 	}
 
 	return result, nil

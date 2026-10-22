@@ -178,6 +178,15 @@ func ForwardProcessStream(reader io.Reader, options ForwardOptions) {
 
 		_, _ = fmt.Fprintf(writer, "[harness:%s:%s] %s\n", source, streamName, line)
 	}
+
+	// A read error, such as a line longer than the buffer, stops the
+	// scanner. The rest of the stream is drained so the process never
+	// blocks on a full pipe.
+	if err := scanner.Err(); err != nil {
+		_, _ = fmt.Fprintf(writer, "[harness:%s:%s] stopped forwarding: %v\n", source, streamName, err)
+
+		DrainProcessStream(reader)
+	}
 }
 
 // DrainProcessStream reads a process stream until it ends, discarding it.

@@ -260,8 +260,7 @@ func generateImagesWithRetry(
 // isNoImageFailure reports whether the final attempt failed only because it
 // returned no images.
 func isNoImageFailure(err error) bool {
-	var retryErr *RetryError
-	if errors.As(err, &retryErr) {
+	if retryErr, ok := errors.AsType[*RetryError](err); ok {
 		return errors.Is(retryErr.LastError(), errNoImageInResponse)
 	}
 

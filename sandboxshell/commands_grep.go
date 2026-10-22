@@ -439,7 +439,8 @@ func translateBasic(pattern string) string {
 			index++
 			output.WriteString(translateBasicEscape(pattern[index]))
 		case strings.IndexByte("(){}|+?", character) >= 0:
-			output.WriteString(`\` + string(character))
+			output.WriteByte('\\')
+			output.WriteByte(character)
 		case character == '*' && isPatternStart(pattern, index):
 			output.WriteString(`\*`)
 		default:

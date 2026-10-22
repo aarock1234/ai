@@ -3,6 +3,7 @@ package amazonbedrock
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -686,10 +687,8 @@ func hasToolContent(prompt []model.Message) bool {
 	for _, message := range prompt {
 		switch message := message.(type) {
 		case model.AssistantMessage:
-			for _, part := range message.Content {
-				if isToolPart(part) {
-					return true
-				}
+			if slices.ContainsFunc(message.Content, isToolPart) {
+				return true
 			}
 
 		case model.ToolMessage:

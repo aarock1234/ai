@@ -298,11 +298,9 @@ func videoMetadata(video taskVideo) GeneratedVideoMetadata {
 
 func (m *VideoModel) responseInfo(timestamp time.Time, response *apicall.Response) model.ResponseInfo {
 	return model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   m.modelID,
-		},
-		Headers: response.Headers,
-		Body:    response.Body,
+		Timestamp: timestamp,
+		ModelID:   m.modelID,
+		Headers:   response.Headers,
+		Body:      response.Body,
 	}
 }

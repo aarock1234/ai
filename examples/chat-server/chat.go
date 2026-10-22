@@ -50,11 +50,9 @@ func (h *chatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// The request context ends the generation when the client disconnects.
 	stream, err := ai.StreamText(ctx, ai.StreamTextOptions{
-		Model: h.model,
-		Prompt: ai.Prompt{
-			System:   instructions,
-			Messages: prompt,
-		},
+		Model:    h.model,
+		System:   instructions,
+		Messages: prompt,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "starting chat stream", slog.Any("error", err))

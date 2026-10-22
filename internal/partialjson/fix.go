@@ -1,6 +1,9 @@
 package partialjson
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // scanState is a position in the JSON grammar.
 type scanState int
@@ -314,8 +317,8 @@ func (f *fixer) complete() string {
 	var result strings.Builder
 	result.WriteString(f.input[:f.validEnd])
 
-	for index := len(f.stack) - 1; index >= 0; index-- {
-		switch f.stack[index] {
+	for _, state := range slices.Backward(f.stack) {
+		switch state {
 		case stateString:
 			result.WriteByte('"')
 

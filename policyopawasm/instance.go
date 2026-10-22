@@ -448,12 +448,12 @@ func (i *policyInstance) readCString(address uint32) ([]byte, error) {
 		return nil, fmt.Errorf("read string at %d: %w", address, ErrMemoryLimit)
 	}
 
-	end := bytes.IndexByte(view, 0)
-	if end < 0 {
+	before, _, ok := bytes.Cut(view, []byte{0})
+	if !ok {
 		return nil, fmt.Errorf("read string at %d: missing null terminator", address)
 	}
 
-	return bytes.Clone(view[:end]), nil
+	return bytes.Clone(before), nil
 }
 
 // ensureMemory grows the memory so that it holds at least size bytes.

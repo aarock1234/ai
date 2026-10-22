@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aarock1234/ai/internal/apicall"
@@ -489,14 +490,14 @@ func (m *ResponsesModel) generatedContent(items []outputItem) ([]model.Content, 
 // joined summary when the item has no content.
 func reasoningContent(item reasoningOutput, namespace string) []model.Content {
 	if len(item.Content) == 0 {
-		var summary string
+		var summary strings.Builder
 		for _, part := range item.Summary {
-			summary += part.Text
+			summary.WriteString(part.Text)
 		}
 
 		return []model.Content{
 			model.Reasoning{
-				Text:             summary,
+				Text:             summary.String(),
 				ProviderMetadata: reasoningMetadata(namespace, item, item.Content),
 			},
 		}

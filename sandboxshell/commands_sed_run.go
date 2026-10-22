@@ -104,10 +104,16 @@ func (e *sedExecution) printPattern(autoPrint bool) {
 	}
 }
 
+// writeLine prints text followed by a newline.
+func (e *sedExecution) writeLine(text string) {
+	e.output.WriteString(text)
+	e.output.WriteByte('\n')
+}
+
 // flushAppended prints the text queued by a and the end of the cycle.
 func (e *sedExecution) flushAppended() {
 	for _, text := range e.appended {
-		e.output.WriteString(text + "\n")
+		e.writeLine(text)
 	}
 
 	e.appended = e.appended[:0]
@@ -259,7 +265,7 @@ func (e *sedExecution) applyCycleCommand(counter int, instruction *sedInstructio
 		return cycleRestarts, true
 	case 'c':
 		if !e.activeRange[counter] {
-			e.output.WriteString(instruction.text + "\n")
+			e.writeLine(instruction.text)
 		}
 
 		return cycleDeletes, true
@@ -330,13 +336,13 @@ func (e *sedExecution) applyEditCommand(instruction *sedInstruction) {
 		e.printPattern(false)
 	case 'P':
 		first, _, _ := strings.Cut(e.pattern, "\n")
-		e.output.WriteString(first + "\n")
+		e.writeLine(first)
 	case '=':
-		e.output.WriteString(strconv.Itoa(e.lineNumber) + "\n")
+		e.writeLine(strconv.Itoa(e.lineNumber))
 	case 'a':
 		e.appended = append(e.appended, instruction.text)
 	case 'i':
-		e.output.WriteString(instruction.text + "\n")
+		e.writeLine(instruction.text)
 	case 'g':
 		e.pattern = e.hold
 	case 'G':

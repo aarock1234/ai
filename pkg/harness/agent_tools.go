@@ -240,8 +240,8 @@ func promptOf(prompt string, messages []model.Message) (model.UserMessage, error
 		return model.UserMessage{}, errors.New("harness agent: either a prompt or messages are required")
 	}
 
-	for index := len(messages) - 1; index >= 0; index-- {
-		switch typed := messages[index].(type) {
+	for _, message := range slices.Backward(messages) {
+		switch typed := message.(type) {
 		case model.UserMessage:
 			return typed, nil
 		case *model.UserMessage:

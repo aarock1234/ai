@@ -360,8 +360,7 @@ func (r *streamRecorder) resetAttempt(boundary streamRetryBoundaryPart) {
 func (r *streamRecorder) recordError(ctx context.Context, part ErrorPart) {
 	r.lastErr = part.Err
 
-	var noOutput *NoOutputGeneratedError
-	if errors.As(part.Err, &noOutput) {
+	if _, ok := errors.AsType[*NoOutputGeneratedError](part.Err); ok {
 		r.noOutputErr = part.Err
 	}
 

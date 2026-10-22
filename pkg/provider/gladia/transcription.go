@@ -102,11 +102,9 @@ func (m *TranscriptionModel) Transcribe(ctx context.Context, options model.Trans
 	}
 
 	result.Response = model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   modelID,
-		},
-		Headers: polled.headers,
+		Timestamp: timestamp,
+		ModelID:   modelID,
+		Headers:   polled.headers,
 	}
 
 	return result, nil

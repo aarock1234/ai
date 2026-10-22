@@ -427,11 +427,9 @@ func (o VideoOptions) validate() error {
 
 func (m *VideoModel) responseInfo(timestamp time.Time, headers http.Header, body []byte) model.ResponseInfo {
 	return model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   m.modelID,
-		},
-		Headers: headers,
-		Body:    body,
+		Timestamp: timestamp,
+		ModelID:   m.modelID,
+		Headers:   headers,
+		Body:      body,
 	}
 }

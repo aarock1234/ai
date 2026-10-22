@@ -62,9 +62,7 @@ func run() error {
 	agent := newSupportAgent(openai.New())
 
 	stream, err := agent.Stream(ctx, ai.AgentStreamOptions{
-		AgentCallOptions: ai.AgentCallOptions{
-			Prompt: "Where are my orders A-1001 and A-1002?",
-		},
+		Prompt: "Where are my orders A-1001 and A-1002?",
 	})
 	if err != nil {
 		return fmt.Errorf("start agent: %w", err)
@@ -98,18 +96,14 @@ func newSupportAgent(provider *openai.Provider) *ai.ToolLoopAgent {
 	})
 
 	return ai.NewToolLoopAgent(ai.ToolLoopAgentSettings{
-		ID: "bookstore-support",
-		GenerateTextOptions: ai.GenerateTextOptions{
-			Model: provider.Responses("gpt-5.4"),
-			Prompt: ai.Prompt{
-				System: instructions,
-			},
-			Tools: []ai.Tool{
-				lookUpOrder,
-			},
-			StopWhen: []ai.StopCondition{
-				ai.IsStepCount(10),
-			},
+		ID:     "bookstore-support",
+		Model:  provider.Responses("gpt-5.4"),
+		System: instructions,
+		Tools: []ai.Tool{
+			lookUpOrder,
+		},
+		StopWhen: []ai.StopCondition{
+			ai.IsStepCount(10),
 		},
 	})
 }

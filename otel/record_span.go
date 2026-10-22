@@ -31,8 +31,7 @@ func recordLegacyError(span trace.Span, err error) {
 }
 
 func apiCallStatusCode(err error) (int, bool) {
-	var retryErr *ai.RetryError
-	if errors.As(err, &retryErr) {
+	if retryErr, ok := errors.AsType[*ai.RetryError](err); ok {
 		err = retryErr.LastError()
 	}
 

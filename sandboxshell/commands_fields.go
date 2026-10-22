@@ -433,7 +433,7 @@ func characterClass(characters []rune) ([]rune, int, bool) {
 	}
 
 	var class []rune
-	for character := rune(0); character < 128; character++ {
+	for character := range rune(128) {
 		if matches(character) {
 			class = append(class, character)
 		}

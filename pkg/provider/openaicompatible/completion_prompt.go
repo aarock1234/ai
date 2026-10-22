@@ -29,7 +29,7 @@ func convertCompletionPrompt(prompt []model.Message) (completionPrompt, error) {
 
 	if len(prompt) > 0 {
 		if system, ok := prompt[0].(model.SystemMessage); ok {
-			text.WriteString(system.Content + "\n\n")
+			writeParagraph(&text, system.Content)
 			prompt = prompt[1:]
 		}
 	}
@@ -40,7 +40,7 @@ func convertCompletionPrompt(prompt []model.Message) (completionPrompt, error) {
 			return completionPrompt{}, fmt.Errorf("%w: unexpected system message in prompt: %s", model.ErrInvalidPrompt, message.Content)
 
 		case model.UserMessage:
-			text.WriteString(userLabel + ":\n" + userText(message) + "\n\n")
+			writeTurn(&text, userLabel, userText(message))
 
 		case model.AssistantMessage:
 			assistantText, err := assistantText(message)
@@ -48,7 +48,7 @@ func convertCompletionPrompt(prompt []model.Message) (completionPrompt, error) {
 				return completionPrompt{}, err
 			}
 
-			text.WriteString(assistantLabel + ":\n" + assistantText + "\n\n")
+			writeTurn(&text, assistantLabel, assistantText)
 
 		case model.ToolMessage:
 			return completionPrompt{}, fmt.Errorf("%w: tool messages", model.ErrUnsupported)
@@ -66,6 +66,21 @@ func convertCompletionPrompt(prompt []model.Message) (completionPrompt, error) {
 			"\n" + userLabel + ":",
 		},
 	}, nil
+}
+
+// writeTurn writes one labeled turn of the transcript: the label on its own
+// line, the content, and a blank line.
+func writeTurn(text *strings.Builder, label string, content string) {
+	text.WriteString(label)
+	text.WriteString(":\n")
+
+	writeParagraph(text, content)
+}
+
+// writeParagraph writes content followed by a blank line.
+func writeParagraph(text *strings.Builder, content string) {
+	text.WriteString(content)
+	text.WriteString("\n\n")
 }
 
 // userText joins the text parts. Files are not sent.

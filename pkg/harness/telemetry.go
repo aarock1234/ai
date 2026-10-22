@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"slices"
 
 	"github.com/aarock1234/ai/pkg/ai"
 )
@@ -80,8 +81,8 @@ func (d telemetryDispatcher) onError(ctx context.Context, event ai.TelemetryErro
 func (d telemetryDispatcher) executeTool(ctx context.Context, event ai.ToolExecutionStartEvent, execute func(ctx context.Context) error) error {
 	wrapped := execute
 
-	for index := len(d.integrations) - 1; index >= 0; index-- {
-		integration, ok := d.integrations[index].(ai.TextTelemetry)
+	for _, registered := range slices.Backward(d.integrations) {
+		integration, ok := registered.(ai.TextTelemetry)
 		if !ok {
 			continue
 		}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/harness"
 )
 
@@ -272,12 +271,10 @@ func (d toolDefinition) builtinTool() (harness.BuiltinTool, error) {
 
 	if !d.common {
 		return harness.BuiltinTool{
-			Tool: ai.Tool{
-				Name:        d.name,
-				Title:       d.title,
-				InputSchema: inputSchema,
-			},
-			UseKind: d.useKind,
+			Name:        d.name,
+			Title:       d.title,
+			InputSchema: inputSchema,
+			UseKind:     d.useKind,
 		}, nil
 	}
 

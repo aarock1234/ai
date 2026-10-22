@@ -315,25 +315,19 @@ func toolInputPart(id string, input bufferedToolInput) harness.StreamPart {
 	switch input.Kind {
 	case inputStart:
 		return harness.ToolInputStartPart{
-			ToolInputStart: model.ToolInputStart{
-				ID:               id,
-				ToolName:         input.ToolName,
-				ProviderExecuted: input.ProviderExecuted,
-				Dynamic:          input.Dynamic,
-			},
+			ID:               id,
+			ToolName:         input.ToolName,
+			ProviderExecuted: input.ProviderExecuted,
+			Dynamic:          input.Dynamic,
 		}
 	case inputDelta:
 		return harness.ToolInputDeltaPart{
-			ToolInputDelta: model.ToolInputDelta{
-				ID:    id,
-				Delta: input.Delta,
-			},
+			ID:    id,
+			Delta: input.Delta,
 		}
 	default:
 		return harness.ToolInputEndPart{
-			ToolInputEnd: model.ToolInputEnd{
-				ID: id,
-			},
+			ID: id,
 		}
 	}
 }
@@ -450,13 +444,11 @@ func (t *translator) toolStart(event sessionEvent) []harness.StreamPart {
 	delete(t.BufferedToolInputs, event.ToolCallID)
 
 	call := harness.ToolCallPart{
-		ToolCall: model.ToolCall{
-			ToolCallID:       event.ToolCallID,
-			ToolName:         name,
-			Input:            toolInput(event.Args),
-			ProviderExecuted: kind != toolHost,
-			Dynamic:          kind.isDynamic(),
-		},
+		ToolCallID:       event.ToolCallID,
+		ToolName:         name,
+		Input:            toolInput(event.Args),
+		ProviderExecuted: kind != toolHost,
+		Dynamic:          kind.isDynamic(),
 	}
 
 	if name != event.ToolName {
@@ -512,13 +504,11 @@ func (t *translator) toolEnd(event sessionEvent) []harness.StreamPart {
 
 	parts := []harness.StreamPart{
 		harness.ToolResultPart{
-			ToolResult: model.ToolResult{
-				ToolCallID: event.ToolCallID,
-				ToolName:   name,
-				Result:     result,
-				IsError:    event.IsError,
-				Dynamic:    dynamicKind != "",
-			},
+			ToolCallID: event.ToolCallID,
+			ToolName:   name,
+			Result:     result,
+			IsError:    event.IsError,
+			Dynamic:    dynamicKind != "",
 		},
 	}
 

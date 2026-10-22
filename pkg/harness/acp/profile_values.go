@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -189,13 +190,7 @@ func containsProviderCredential(value any) bool {
 	case *ValueSource:
 		return typed != nil && isCredentialSource(typed.Source)
 	case []any:
-		for _, item := range typed {
-			if containsProviderCredential(item) {
-				return true
-			}
-		}
-
-		return false
+		return slices.ContainsFunc(typed, containsProviderCredential)
 	case map[string]any:
 		if source, ok := valueSourceOf(typed); ok {
 			return isCredentialSource(source.Source)

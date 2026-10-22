@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"time"
 )
@@ -210,9 +211,7 @@ func addProtocolMeta(params json.RawMessage, entries map[string]any) (json.RawMe
 		}
 	}
 
-	for key, value := range entries {
-		meta[key] = value
-	}
+	maps.Copy(meta, entries)
 
 	encodedMeta, err := json.Marshal(meta)
 	if err != nil {

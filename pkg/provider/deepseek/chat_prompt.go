@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/aarock1234/ai/internal/dataurl"
@@ -92,8 +93,8 @@ func convertChatPrompt(prompt []model.Message, settings promptSettings) ([]chatM
 }
 
 func lastUserIndex(prompt []model.Message) int {
-	for index := len(prompt) - 1; index >= 0; index-- {
-		if prompt[index].Role() == model.RoleUser {
+	for index, message := range slices.Backward(prompt) {
+		if message.Role() == model.RoleUser {
 			return index
 		}
 	}

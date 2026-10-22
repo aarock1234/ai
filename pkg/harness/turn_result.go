@@ -376,11 +376,9 @@ func (r *turnResult) parseOutput(ctx context.Context, finalStep ai.StepResult) (
 // mu.
 func (r *turnResult) stepResponse() model.ResponseInfo {
 	return model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			ID:        stepResponseID(r.callID, r.stepNumber),
-			Timestamp: time.Now(),
-			ModelID:   r.modelID,
-		},
+		ID:        stepResponseID(r.callID, r.stepNumber),
+		Timestamp: time.Now(),
+		ModelID:   r.modelID,
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -392,9 +393,7 @@ func (t *HTTPTransport) postHeaders(ctx context.Context, message Message, option
 	}
 
 	if modern {
-		for name, values := range options.Headers {
-			base[name] = values
-		}
+		maps.Copy(base, options.Headers)
 
 		if message.Kind() == MessageKindRequest {
 			addStandardRequestHeaders(base, message)

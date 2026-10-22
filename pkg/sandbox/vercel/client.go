@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -188,9 +189,7 @@ func (c *apiClient) doJSON(ctx context.Context, request apiRequest, result any) 
 // newRequest builds an authenticated request scoped to the team.
 func (c *apiClient) newRequest(ctx context.Context, request apiRequest) (*http.Request, error) {
 	query := url.Values{}
-	for key, values := range request.query {
-		query[key] = values
-	}
+	maps.Copy(query, request.query)
 
 	credentials := c.currentCredentials()
 	query.Set("teamId", credentials.TeamID)

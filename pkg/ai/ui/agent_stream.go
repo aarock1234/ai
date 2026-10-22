@@ -77,11 +77,9 @@ func CreateAgentStream(ctx context.Context, options CreateAgentStreamOptions) (i
 	}
 
 	result, err := options.Agent.Stream(ctx, ai.AgentStreamOptions{
-		AgentCallOptions: ai.AgentCallOptions{
-			Messages:  modelMessages,
-			Options:   options.Options,
-			OnStepEnd: options.OnStepEnd,
-		},
+		Messages:   modelMessages,
+		Options:    options.Options,
+		OnStepEnd:  options.OnStepEnd,
 		Transforms: options.Transforms,
 	})
 	if err != nil {

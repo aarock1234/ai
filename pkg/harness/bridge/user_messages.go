@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 
@@ -186,8 +187,8 @@ const (
 func ClassifyDiskLog(eventLog string) DiskLogRecoveryMode {
 	lines := strings.Split(eventLog, "\n")
 
-	for index := len(lines) - 1; index >= 0; index-- {
-		line := strings.TrimSpace(lines[index])
+	for _, line := range slices.Backward(lines) {
+		line := strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}

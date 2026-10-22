@@ -94,10 +94,12 @@ func (o videoOperation) run(ctx context.Context) (*model.VideoResult, error) {
 		return nil, err
 	}
 
+	videoOptions := o.options
+	videoOptions.Headers = withIdempotencyKey(o.options.Headers)
+
 	startOptions := model.VideoStartOptions{
-		VideoOptions: o.options,
+		VideoOptions: videoOptions,
 	}
-	startOptions.Headers = withIdempotencyKey(o.options.Headers)
 
 	if webhook != nil {
 		startOptions.WebhookURL = webhook.URL

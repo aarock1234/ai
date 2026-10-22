@@ -152,11 +152,9 @@ func (m *SpeechTranslationModel) StreamTranslation(ctx context.Context, options 
 		Body: setup,
 	}
 	result.Response = model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   m.modelID,
-		},
-		Headers: conn.ResponseHeader(),
+		Timestamp: timestamp,
+		ModelID:   m.modelID,
+		Headers:   conn.ResponseHeader(),
 	}
 
 	return result, nil

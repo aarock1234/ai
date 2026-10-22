@@ -181,8 +181,7 @@ func validateRedirectScheme(target *url.URL) error {
 // transportFailure keeps a *Error raised while validating a dialed address
 // and wraps any other transport failure.
 func transportFailure(location string, err error) error {
-	var downloadErr *Error
-	if errors.As(err, &downloadErr) {
+	if downloadErr, ok := errors.AsType[*Error](err); ok {
 		return downloadErr
 	}
 

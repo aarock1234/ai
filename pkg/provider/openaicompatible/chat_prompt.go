@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"maps"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/aarock1234/ai/internal/dataurl"
@@ -363,7 +364,7 @@ func convertAssistantMessage(message model.AssistantMessage, settings promptSett
 	}
 
 	var text string
-	var reasoning string
+	var reasoning strings.Builder
 	var toolCalls []messageToolCall
 
 	for _, part := range message.Content {
@@ -372,7 +373,7 @@ func convertAssistantMessage(message model.AssistantMessage, settings promptSett
 			text += part.Text
 
 		case model.ReasoningPart:
-			reasoning += part.Text
+			reasoning.WriteString(part.Text)
 
 		case model.ToolCallPart:
 			toolCall, err := convertToolCall(part, settings.metadataKey)
@@ -392,7 +393,7 @@ func convertAssistantMessage(message model.AssistantMessage, settings promptSett
 	return assistantMessage{
 		Role:             "assistant",
 		Content:          content,
-		ReasoningContent: reasoning,
+		ReasoningContent: reasoning.String(),
 		ToolCalls:        toolCalls,
 		Extra:            extra,
 	}, nil

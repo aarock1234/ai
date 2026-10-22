@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/aarock1234/ai/pkg/model"
 )
@@ -273,8 +274,8 @@ type Citation struct {
 // provider metadata of earlier steps, oldest first. It returns nil when no
 // step used a container.
 func ForwardContainerID(stepMetadata []model.ProviderMetadata) (model.ProviderOptions, error) {
-	for index := len(stepMetadata) - 1; index >= 0; index-- {
-		metadata, found, err := model.ProviderValue[MessagesMetadata](stepMetadata[index], Namespace)
+	for _, providerMetadata := range slices.Backward(stepMetadata) {
+		metadata, found, err := model.ProviderValue[MessagesMetadata](providerMetadata, Namespace)
 		if err != nil {
 			return nil, err
 		}

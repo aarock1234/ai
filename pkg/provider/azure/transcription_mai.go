@@ -155,11 +155,9 @@ func (m *maiTranscriptionModel) streamTranscribe(ctx context.Context, options mo
 		Body: sessionUpdate,
 	}
 	result.Response = model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   m.modelID,
-		},
-		Headers: conn.ResponseHeader(),
+		Timestamp: timestamp,
+		ModelID:   m.modelID,
+		Headers:   conn.ResponseHeader(),
 	}
 
 	return result, nil

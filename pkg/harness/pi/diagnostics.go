@@ -79,6 +79,15 @@ func followDiagnostics(ctx context.Context, owner *session, observability *harne
 				observability.Report(diagnostic)
 			}
 		}
+
+		// A read error, such as a line longer than the buffer, stops the
+		// scanner. The rest of the stream is drained so the follower
+		// process never blocks on a full pipe.
+		if err := scanner.Err(); err != nil {
+			slog.Default().WarnContext(followerCtx, "pi diagnostics stopped", slog.String("session", owner.sessionID), slog.Any("error", err))
+
+			bridge.DrainProcessStream(process.Stdout())
+		}
 	}()
 
 	return follower

@@ -191,13 +191,14 @@ func decodeToolInputStart(wire wireStreamPart) (harness.StreamPart, error) {
 		return nil, err
 	}
 
-	part := harness.ToolInputStartPart{}
-	part.ID = id
-	part.ToolName = toolName
-	part.ProviderExecuted = wire.ProviderExecuted
-	part.Dynamic = wire.Dynamic
-	part.Title = wire.Title
-	part.ProviderMetadata = toProviderMetadata(wire.ProviderMetadata)
+	part := harness.ToolInputStartPart{
+		ID:               id,
+		ToolName:         toolName,
+		ProviderExecuted: wire.ProviderExecuted,
+		Dynamic:          wire.Dynamic,
+		Title:            wire.Title,
+		ProviderMetadata: toProviderMetadata(wire.ProviderMetadata),
+	}
 
 	return part, nil
 }
@@ -209,10 +210,11 @@ func decodeToolInputDelta(wire wireStreamPart) (harness.StreamPart, error) {
 		return nil, err
 	}
 
-	part := harness.ToolInputDeltaPart{}
-	part.ID = id
-	part.Delta = delta
-	part.ProviderMetadata = toProviderMetadata(wire.ProviderMetadata)
+	part := harness.ToolInputDeltaPart{
+		ID:               id,
+		Delta:            delta,
+		ProviderMetadata: toProviderMetadata(wire.ProviderMetadata),
+	}
 
 	return part, nil
 }
@@ -224,9 +226,10 @@ func decodeToolInputEnd(wire wireStreamPart) (harness.StreamPart, error) {
 		return nil, err
 	}
 
-	part := harness.ToolInputEndPart{}
-	part.ID = id
-	part.ProviderMetadata = toProviderMetadata(wire.ProviderMetadata)
+	part := harness.ToolInputEndPart{
+		ID:               id,
+		ProviderMetadata: toProviderMetadata(wire.ProviderMetadata),
+	}
 
 	return part, nil
 }
@@ -245,13 +248,14 @@ func decodeToolCall(wire wireStreamPart) (harness.StreamPart, error) {
 
 	part := harness.ToolCallPart{
 		NativeName: wire.NativeName,
+
+		ToolCallID:       toolCallID,
+		ToolName:         toolName,
+		Input:            input,
+		ProviderExecuted: wire.ProviderExecuted,
+		Dynamic:          wire.Dynamic,
+		ProviderMetadata: toProviderMetadata(wire.ProviderMetadata),
 	}
-	part.ToolCallID = toolCallID
-	part.ToolName = toolName
-	part.Input = input
-	part.ProviderExecuted = wire.ProviderExecuted
-	part.Dynamic = wire.Dynamic
-	part.ProviderMetadata = toProviderMetadata(wire.ProviderMetadata)
 
 	return part, nil
 }
@@ -268,10 +272,11 @@ func decodeToolApprovalRequest(wire wireStreamPart) (harness.StreamPart, error) 
 		return nil, err
 	}
 
-	part := harness.ToolApprovalRequestPart{}
-	part.ApprovalID = approvalID
-	part.ToolCallID = toolCallID
-	part.ProviderMetadata = toProviderMetadata(wire.ProviderMetadata)
+	part := harness.ToolApprovalRequestPart{
+		ApprovalID:       approvalID,
+		ToolCallID:       toolCallID,
+		ProviderMetadata: toProviderMetadata(wire.ProviderMetadata),
+	}
 
 	return part, nil
 }
@@ -289,14 +294,15 @@ func decodeToolResult(wire wireStreamPart) (harness.StreamPart, error) {
 		result = json.RawMessage("null")
 	}
 
-	part := harness.ToolResultPart{}
-	part.ToolCallID = toolCallID
-	part.ToolName = toolName
-	part.Result = result
-	part.IsError = wire.IsError
-	part.Preliminary = wire.Preliminary
-	part.Dynamic = wire.Dynamic
-	part.ProviderMetadata = toProviderMetadata(wire.ProviderMetadata)
+	part := harness.ToolResultPart{
+		ToolCallID:       toolCallID,
+		ToolName:         toolName,
+		Result:           result,
+		IsError:          wire.IsError,
+		Preliminary:      wire.Preliminary,
+		Dynamic:          wire.Dynamic,
+		ProviderMetadata: toProviderMetadata(wire.ProviderMetadata),
+	}
 
 	return part, nil
 }

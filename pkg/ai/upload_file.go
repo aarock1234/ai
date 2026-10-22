@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/aarock1234/ai/internal/mediatype"
 	"github.com/aarock1234/ai/pkg/model"
@@ -120,13 +121,7 @@ func isLikelyText(data []byte) bool {
 		return false
 	}
 
-	for _, value := range sample {
-		if isTextControl(value) {
-			return false
-		}
-	}
-
-	return true
+	return !slices.ContainsFunc(sample, isTextControl)
 }
 
 // isTextControl reports whether a byte is NUL or a control character that

@@ -96,12 +96,14 @@ func StartVideo(ctx context.Context, options StartVideoOptions) (*StartVideoResu
 		return nil, err
 	}
 
+	videoOptions := inputs.callOptions(options.VideoSettings)
+	videoOptions.N = count
+	videoOptions.Headers = withIdempotencyKey(options.Headers)
+
 	startOptions := model.VideoStartOptions{
-		VideoOptions: inputs.callOptions(options.VideoSettings),
+		VideoOptions: videoOptions,
 		WebhookURL:   options.WebhookURL,
 	}
-	startOptions.N = count
-	startOptions.Headers = withIdempotencyKey(options.Headers)
 
 	started, err := startVideoWithRetry(ctx, operator, retry, startOptions)
 	if err != nil {

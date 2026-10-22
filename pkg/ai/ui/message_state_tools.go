@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/aarock1234/ai/internal/partialjson"
 	"github.com/aarock1234/ai/pkg/model"
@@ -124,8 +125,8 @@ func (s *messageState) findToolPart(toolCallID, chunkType string) (int, error) {
 		}
 	}
 
-	for index := len(s.message.Parts) - 1; index >= 0; index-- {
-		if part, ok := s.message.Parts[index].(ToolPart); ok && part.ToolCallID == toolCallID {
+	for index, candidate := range slices.Backward(s.message.Parts) {
+		if part, ok := candidate.(ToolPart); ok && part.ToolCallID == toolCallID {
 			return index, nil
 		}
 	}

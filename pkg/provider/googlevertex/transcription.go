@@ -160,12 +160,10 @@ func (m *TranscriptionModel) recognize(ctx context.Context, options model.Transc
 
 	result := recognitionResult(decoded)
 	result.Response = model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   m.modelID,
-		},
-		Headers: response.Headers,
-		Body:    response.Body,
+		Timestamp: timestamp,
+		ModelID:   m.modelID,
+		Headers:   response.Headers,
+		Body:      response.Body,
 	}
 
 	return result, nil

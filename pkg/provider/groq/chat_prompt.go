@@ -2,6 +2,7 @@ package groq
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/aarock1234/ai/internal/dataurl"
 	"github.com/aarock1234/ai/internal/mediatype"
@@ -143,17 +144,17 @@ func imagePart(part model.FilePart) (contentPart, error) {
 // message. Groq accepts reasoning with tool calls in multi-turn
 // conversations.
 func convertAssistantMessage(message model.AssistantMessage) (assistantMessage, error) {
-	var text string
-	var reasoning string
+	var text strings.Builder
+	var reasoning strings.Builder
 	var toolCalls []messageToolCall
 
 	for _, part := range message.Content {
 		switch part := part.(type) {
 		case model.ReasoningPart:
-			reasoning += part.Text
+			reasoning.WriteString(part.Text)
 
 		case model.TextPart:
-			text += part.Text
+			text.WriteString(part.Text)
 
 		case model.ToolCallPart:
 			arguments, err := toolresult.CompactJSON(part.Input)
@@ -174,8 +175,8 @@ func convertAssistantMessage(message model.AssistantMessage) (assistantMessage, 
 
 	return assistantMessage{
 		Role:      "assistant",
-		Content:   text,
-		Reasoning: reasoning,
+		Content:   text.String(),
+		Reasoning: reasoning.String(),
 		ToolCalls: toolCalls,
 	}, nil
 }

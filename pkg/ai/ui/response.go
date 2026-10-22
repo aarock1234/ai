@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
 	"net/http"
 	"sync"
 	"time"
@@ -312,9 +313,7 @@ func validateKeepAlive(keepAlive time.Duration) error {
 func writeResponseHead(w http.ResponseWriter, init ResponseInit, defaults http.Header) {
 	header := w.Header()
 
-	for name, values := range responseHeaders(init.Headers, defaults) {
-		header[name] = values
-	}
+	maps.Copy(header, responseHeaders(init.Headers, defaults))
 
 	w.WriteHeader(responseStatus(init.Status))
 }

@@ -132,11 +132,9 @@ func fromNativeQuestionRequest(native acp.NativeQuestionRequest) (*harness.ToolC
 	}
 
 	return &harness.ToolCallPart{
-		ToolCall: model.ToolCall{
-			ToolCallID: *request.ToolCallID,
-			ToolName:   string(harness.ToolAskUserQuestions),
-			Input:      string(input),
-		},
+		ToolCallID: *request.ToolCallID,
+		ToolName:   string(harness.ToolAskUserQuestions),
+		Input:      string(input),
 		NativeName: questionNativeName,
 	}, nil
 }

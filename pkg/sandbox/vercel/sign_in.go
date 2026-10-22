@@ -411,11 +411,11 @@ func (r oauthErrorResponse) cause() error {
 	message.WriteString(r.Code)
 
 	if r.Description != "" {
-		message.WriteString(": " + r.Description)
+		fmt.Fprintf(&message, ": %s", r.Description)
 	}
 
 	if r.URI != "" {
-		message.WriteString(" (" + r.URI + ")")
+		fmt.Fprintf(&message, " (%s)", r.URI)
 	}
 
 	return errors.New(message.String())

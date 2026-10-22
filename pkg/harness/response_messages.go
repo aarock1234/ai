@@ -177,8 +177,7 @@ func errorModelOutput(toolError ai.ToolError) (model.ToolResultOutput, error) {
 		}, nil
 	}
 
-	var providerError *ai.ProviderToolError
-	if errors.As(toolError.Error, &providerError) {
+	if providerError, ok := errors.AsType[*ai.ProviderToolError](toolError.Error); ok {
 		return model.ErrorJSONOutput{
 			Value: providerError.Result,
 		}, nil

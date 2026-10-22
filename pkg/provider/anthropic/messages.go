@@ -174,7 +174,7 @@ func betasFromHeaders(headerSets ...http.Header) []string {
 
 	for _, headers := range headerSets {
 		for _, value := range headers.Values("anthropic-beta") {
-			for _, beta := range strings.Split(strings.ToLower(value), ",") {
+			for beta := range strings.SplitSeq(strings.ToLower(value), ",") {
 				beta = strings.TrimSpace(beta)
 				if beta != "" {
 					betas = append(betas, beta)

@@ -382,11 +382,9 @@ func decodeVideos(videos []wireVideo) ([]model.VideoData, error) {
 
 func (m *VideoModel) responseInfo(response *apicall.Response) model.ResponseInfo {
 	return model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: time.Now(),
-			ModelID:   m.modelID,
-		},
-		Headers: response.Headers,
-		Body:    response.Body,
+		Timestamp: time.Now(),
+		ModelID:   m.modelID,
+		Headers:   response.Headers,
+		Body:      response.Body,
 	}
 }

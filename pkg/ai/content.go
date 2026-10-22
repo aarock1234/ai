@@ -232,8 +232,7 @@ func toolOutputIsProviderExecuted(output ToolOutput) bool {
 // model: the provider's JSON result for provider-executed tools and the
 // error itself otherwise.
 func toolErrorValue(err error) any {
-	var providerErr *ProviderToolError
-	if errors.As(err, &providerErr) {
+	if providerErr, ok := errors.AsType[*ProviderToolError](err); ok {
 		return providerErr.Result
 	}
 

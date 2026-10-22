@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 
@@ -175,10 +176,8 @@ func requestsDiarization(options model.ProviderOptions) bool {
 func containsSpeaker(value any) bool {
 	switch value := value.(type) {
 	case []any:
-		for _, item := range value {
-			if containsSpeaker(item) {
-				return true
-			}
+		if slices.ContainsFunc(value, containsSpeaker) {
+			return true
 		}
 
 	case map[string]any:

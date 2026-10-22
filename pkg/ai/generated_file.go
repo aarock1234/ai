@@ -43,10 +43,8 @@ func newGeneratedAudioFile(data []byte, mediaType string) GeneratedAudioFile {
 	}
 
 	return GeneratedAudioFile{
-		GeneratedFile: GeneratedFile{
-			Data:      data,
-			MediaType: mediaType,
-		},
-		Format: format,
+		Data:      data,
+		MediaType: mediaType,
+		Format:    format,
 	}
 }

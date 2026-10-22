@@ -647,11 +647,14 @@ func wrapText(text string, columns int) string {
 
 	var wrapped strings.Builder
 	for len(text) > columns {
-		wrapped.WriteString(text[:columns] + "\n")
+		wrapped.WriteString(text[:columns])
+		wrapped.WriteByte('\n')
+
 		text = text[columns:]
 	}
 
-	wrapped.WriteString(text + "\n")
+	wrapped.WriteString(text)
+	wrapped.WriteByte('\n')
 
 	return wrapped.String()
 }

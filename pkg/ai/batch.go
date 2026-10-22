@@ -240,11 +240,9 @@ func StartBatch(ctx context.Context, options StartBatchOptions) (*StartBatchResu
 	logBatchWarnings(ctx, options, requests, started.Warnings)
 
 	return &StartBatchResult{
-		Batch: Batch{
-			BatchReference: newBatchReference(options.API, started.BatchID),
-			BatchStatus:    started.BatchStatus,
-		},
-		Warnings: started.Warnings,
+		BatchReference: newBatchReference(options.API, started.BatchID),
+		BatchStatus:    started.BatchStatus,
+		Warnings:       started.Warnings,
 	}, nil
 }
 

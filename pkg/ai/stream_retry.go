@@ -227,8 +227,7 @@ func (a *streamAttempts) shouldRetry(ctx context.Context, part ErrorPart) bool {
 		})
 	}
 
-	var violation *ToolChoiceViolationError
-	if errors.As(part.Err, &violation) {
+	if _, ok := errors.AsType[*ToolChoiceViolationError](part.Err); ok {
 		return false
 	}
 

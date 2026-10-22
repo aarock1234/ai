@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"time"
 
 	"github.com/aarock1234/ai/pkg/model"
@@ -443,9 +444,7 @@ func (s *streamStep) handleModelCallEnd(ctx context.Context, part ModelCallEndPa
 	})
 
 	s.outputs = append(s.outputs, executed.outputs...)
-	for toolCallID, executionTime := range executed.executionTimes {
-		s.executionTimes[toolCallID] = executionTime
-	}
+	maps.Copy(s.executionTimes, executed.executionTimes)
 
 	return ok
 }

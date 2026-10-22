@@ -304,11 +304,12 @@ func (d *turnDriver) approvalToolCall(approval PendingToolApproval) ToolCallPart
 
 	part := ToolCallPart{
 		NativeName: approval.NativeName,
+
+		ToolCallID:       approval.ToolCallID,
+		ToolName:         approval.ToolName,
+		Input:            approval.Input,
+		ProviderExecuted: approval.ProviderExecuted,
 	}
-	part.ToolCallID = approval.ToolCallID
-	part.ToolName = approval.ToolName
-	part.Input = approval.Input
-	part.ProviderExecuted = approval.ProviderExecuted
 
 	return part
 }

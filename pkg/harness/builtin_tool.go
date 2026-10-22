@@ -168,14 +168,12 @@ func CommonTool(name BuiltinToolName, options CommonToolOptions) (BuiltinTool, e
 	}
 
 	return BuiltinTool{
-		Tool: ai.Tool{
-			Name:        string(name),
-			Description: options.Description,
-			InputSchema: options.InputSchema,
-		},
-		NativeName: options.NativeName,
-		CommonName: name,
-		UseKind:    options.UseKind,
+		Name:        string(name),
+		Description: options.Description,
+		InputSchema: options.InputSchema,
+		NativeName:  options.NativeName,
+		CommonName:  name,
+		UseKind:     options.UseKind,
 	}, nil
 }
 

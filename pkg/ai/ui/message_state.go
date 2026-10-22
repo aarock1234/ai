@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/aarock1234/ai/internal/merge"
 	"github.com/aarock1234/ai/pkg/model"
@@ -434,8 +435,8 @@ func (s *messageState) currentStepStart() int {
 // lastStepStart returns the index of the first part after the last
 // step-start part.
 func lastStepStart(parts []Part) int {
-	for index := len(parts) - 1; index >= 0; index-- {
-		if _, isStepStart := parts[index].(StepStartPart); isStepStart {
+	for index, part := range slices.Backward(parts) {
+		if _, isStepStart := part.(StepStartPart); isStepStart {
 			return index + 1
 		}
 	}

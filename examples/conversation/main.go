@@ -44,11 +44,9 @@ func run() error {
 		history = append(history, userMessage(question))
 
 		result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
-			Model: languageModel,
-			Prompt: ai.Prompt{
-				System:   instructions,
-				Messages: history,
-			},
+			Model:    languageModel,
+			System:   instructions,
+			Messages: history,
 		})
 		if err != nil {
 			return fmt.Errorf("answer %q: %w", question, err)

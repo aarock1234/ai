@@ -223,8 +223,7 @@ func statusOf(ok bool) int {
 // describeError returns the description of a filesystem error as coreutils
 // prints it, such as "No such file or directory".
 func describeError(err error) string {
-	var pathErr *fs.PathError
-	if errors.As(err, &pathErr) {
+	if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
 		err = pathErr.Err
 	}
 

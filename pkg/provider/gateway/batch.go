@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"regexp"
 	"time"
@@ -218,9 +219,7 @@ func splitIdempotencyKey(providerOptions model.ProviderOptions) (string, model.P
 	remaining := gatewayOptions.Without("idempotencyKey")
 
 	forwarded := make(model.ProviderOptions, len(providerOptions))
-	for namespace, value := range providerOptions {
-		forwarded[namespace] = value
-	}
+	maps.Copy(forwarded, providerOptions)
 
 	if len(remaining) == 0 {
 		delete(forwarded, Namespace)

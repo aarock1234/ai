@@ -2,6 +2,7 @@ package mistral
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/aarock1234/ai/internal/dataurl"
 	"github.com/aarock1234/ai/internal/mediatype"
@@ -163,7 +164,7 @@ func fileAddress(part model.FilePart) (string, error) {
 // convertAssistantMessage sends plain text, or text and thinking parts when
 // the message has reasoning.
 func convertAssistantMessage(message model.AssistantMessage, isLast bool) (chatMessage, error) {
-	var text string
+	var text strings.Builder
 	var parts []contentPart
 	var toolCalls []messageToolCall
 	hasReasoning := false
@@ -171,7 +172,7 @@ func convertAssistantMessage(message model.AssistantMessage, isLast bool) (chatM
 	for _, part := range message.Content {
 		switch part := part.(type) {
 		case model.TextPart:
-			text += part.Text
+			text.WriteString(part.Text)
 			parts = append(parts, textPart(part.Text))
 
 		case model.ReasoningPart:
@@ -192,7 +193,7 @@ func convertAssistantMessage(message model.AssistantMessage, isLast bool) (chatM
 	}
 
 	content := assistantContent{
-		Text: text,
+		Text: text.String(),
 	}
 	if hasReasoning {
 		content.Parts = parts

@@ -354,9 +354,10 @@ func (s *toolInputStripper) stripEnd(part ToolInputEndPart) []StreamPart {
 		}
 	}
 
-	delta := ToolInputDeltaPart{}
-	delta.ID = part.ID
-	delta.Delta = output
+	delta := ToolInputDeltaPart{
+		ID:    part.ID,
+		Delta: output,
+	}
 
 	return []StreamPart{
 		delta,

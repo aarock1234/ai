@@ -112,9 +112,7 @@ func (c *localConversation) finishTurn(finished turnFinishedMsg) []approvalReque
 
 func streamLocalTurn(ctx context.Context, agent ai.Agent, messages []model.Message, events chan<- tea.Msg) {
 	result, err := agent.Stream(ctx, ai.AgentStreamOptions{
-		AgentCallOptions: ai.AgentCallOptions{
-			Messages: messages,
-		},
+		Messages: messages,
 	})
 	if err != nil {
 		send(ctx, events, turnFinishedMsg{

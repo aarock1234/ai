@@ -221,10 +221,8 @@ func (s *session) handleApprovalDialog(requestID string, dialog dialogRequest) {
 	}
 
 	request := harness.ToolApprovalRequestPart{
-		ToolApprovalRequest: model.ToolApprovalRequest{
-			ApprovalID: dialog.ToolCallID,
-			ToolCallID: dialog.ToolCallID,
-		},
+		ApprovalID: dialog.ToolCallID,
+		ToolCallID: dialog.ToolCallID,
 	}
 
 	s.deliver(current, append([]harness.StreamPart{request}, parts...))

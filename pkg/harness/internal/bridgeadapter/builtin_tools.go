@@ -50,12 +50,10 @@ func ParseBuiltinTools(table []byte) ([]harness.BuiltinTool, error) {
 func builtinToolOf(definition builtinToolDefinition) (harness.BuiltinTool, error) {
 	if definition.CommonName == "" {
 		return harness.BuiltinTool{
-			Tool: ai.Tool{
-				Name:        definition.Name,
-				Description: definition.Description,
-				InputSchema: definition.InputSchema,
-			},
-			UseKind: definition.UseKind,
+			Name:        definition.Name,
+			Description: definition.Description,
+			InputSchema: definition.InputSchema,
+			UseKind:     definition.UseKind,
 		}, nil
 	}
 

@@ -88,11 +88,9 @@ func (m *TranscriptionModel) StreamTranscribe(ctx context.Context, options model
 		Body: startFrame,
 	}
 	result.Response = model.ResponseInfo{
-		ResponseMetadata: model.ResponseMetadata{
-			Timestamp: timestamp,
-			ModelID:   m.modelID,
-		},
-		Headers: conn.ResponseHeader(),
+		Timestamp: timestamp,
+		ModelID:   m.modelID,
+		Headers:   conn.ResponseHeader(),
 	}
 
 	return result, nil

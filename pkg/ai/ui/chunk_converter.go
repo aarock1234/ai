@@ -246,8 +246,7 @@ func (c chunkConverter) toolErrorText(toolError ai.ToolError) string {
 		return c.onError(toolError.Error)
 	}
 
-	var providerErr *ai.ProviderToolError
-	if errors.As(toolError.Error, &providerErr) {
+	if providerErr, ok := errors.AsType[*ai.ProviderToolError](toolError.Error); ok {
 		var text string
 		if err := json.Unmarshal(providerErr.Result, &text); err == nil {
 			return text
