@@ -45,4 +45,4 @@ Final state, for each of the five modules (the core module, `otel/`, `codemode/`
 - The pinned golangci-lint v2.15.0 reports 0 issues on `run --tests=false ./...`.
 - Cross-compiled builds pass for `linux/amd64`, `linux/arm64` and `darwin/arm64`.
 
-Nothing has been exercised at runtime, and no live provider calls were made. The existing `*_test.go` files predate the rewrite and were left untouched; they do not compile against the new API. See [roadmap](roadmap.md) and [feature parity](feature-parity.md) for remaining work.
+Nothing has been exercised at runtime, and no live provider calls were made. The pre-rewrite `*_test.go` files, which no longer compiled against the new API, were deleted at the owner's request; the repository has no tests. See [roadmap](roadmap.md) and [feature parity](feature-parity.md) for remaining work.
