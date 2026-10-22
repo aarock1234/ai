@@ -1,0 +1,21 @@
+ai-sdk-go
+Copyright 2026 aarock1234
+
+This software is licensed under the Apache License, Version 2.0; see LICENSE.
+
+This software is a Go port of the Vercel AI SDK
+(https://github.com/vercel/ai, commit a1db2092f9cbdf20b35c7d374c79a0aeceefef2a),
+Copyright 2023 Vercel, Inc., licensed under the Apache License, Version 2.0.
+The Go code is a modified, translated derivative of that work.
+
+The following files are copied unmodified from published Vercel AI SDK
+packages. Each directory includes the upstream copy of its license:
+
+- pkg/devtools/client (from @ai-sdk/devtools)
+- pkg/harness/acp/assets (from @ai-sdk/harness-acp)
+- pkg/harness/claudecode/assets (from @ai-sdk/harness-claude-code)
+- pkg/harness/codex/assets (from @ai-sdk/harness-codex)
+- pkg/harness/deepagents/assets (from @ai-sdk/harness-deepagents)
+- pkg/harness/githubcopilot/assets (from @ai-sdk/harness-github-copilot)
+- pkg/harness/grokbuild/assets (from @ai-sdk/harness-grok-build)
+- pkg/harness/opencode/assets (from @ai-sdk/harness-opencode)
