@@ -1,10 +1,8 @@
 # AI SDK for Go
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/aarock1234/ai.svg)](https://pkg.go.dev/github.com/aarock1234/ai)
-[![Go Report Card](https://goreportcard.com/badge/github.com/aarock1234/ai)](https://goreportcard.com/report/github.com/aarock1234/ai)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A unified Go SDK for working with large language models. Write provider-agnostic code once, swap models with a single line.
+An idiomatic Go port of the [Vercel AI SDK](https://ai-sdk.dev) v7. One API for text generation, streaming, structured output, tools, agents, embeddings, images, video, speech, transcription and reranking across 48 providers, plus the server side of the AI SDK UI protocol, so a Go backend can stream to a `useChat` frontend.
 
 ## Install
 
@@ -12,9 +10,9 @@ A unified Go SDK for working with large language models. Write provider-agnostic
 go get github.com/aarock1234/ai
 ```
 
-Requires Go 1.23+.
+Requires Go 1.27.3 or later.
 
-## Quick Start
+## Quick start
 
 ```go
 package main
@@ -29,11 +27,14 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	provider := openai.New() // reads OPENAI_API_KEY
 
-	result, err := ai.GenerateText(ctx, openai.Chat("gpt-5.4"),
-		ai.WithPrompt("What is the capital of France?"),
-	)
+	result, err := ai.GenerateText(context.Background(), ai.GenerateTextOptions{
+		Model: provider.Responses("gpt-5.4"),
+		Prompt: ai.Prompt{
+			Prompt: "What is the capital of France?",
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -42,388 +43,621 @@ func main() {
 }
 ```
 
-## Streaming
+Every top-level function takes a `context.Context` and one options struct named after it: `GenerateText` and `GenerateTextOptions`, `Embed` and `EmbedOptions`, and so on.
+
+## Packages
+
+| Package | Contents |
+| --- | --- |
+| `pkg/ai` | Text, streaming, structured output, tools, agents, embeddings, images, speech, transcription, reranking, video, uploads, registry, and the experimental batch, decision, realtime and translation APIs |
+| `pkg/ai/middleware` | Language, embedding and image model middleware |
+| `pkg/ai/ui` | UI messages and UI message streams for the AI SDK UI (`useChat`) |
+| `pkg/model` | The provider specification: model interfaces, messages, content, stream parts and errors |
+| `pkg/provider/...` | Provider implementations |
+
+[Additional packages](#additional-packages) cover MCP, coding-agent harnesses, sandboxes, observability and policies.
+
+## Providers
+
+Packages live under `github.com/aarock1234/ai/pkg/provider/`. Create a provider with `New(options...)`, except `openaicompatible.New(name, baseURL)` and `openresponses.New(name, url)`. Credentials are read from the environment when a request is sent; configure providers with options such as `WithAPIKey`, `WithBaseURL`, `WithHTTPClient` and `WithHeaders`. Each provider has typed model constructors, such as `openai.New().Responses("gpt-5.4")` or `anthropic.New().Messages("claude-sonnet-4-5")`, and implements `model.Provider` for lookups by ID.
+
+| Package | Environment | Models |
+| --- | --- | --- |
+| `alibaba` | `ALIBABA_API_KEY` | Language, embedding, video |
+| `amazonbedrock` | `AWS_REGION` with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, or `AWS_BEARER_TOKEN_BEDROCK` | Language, embedding, image, reranking; `amazonbedrock/anthropic` and `amazonbedrock/mantle` for Claude Messages and Mantle models |
+| `anthropic` | `ANTHROPIC_API_KEY` | Language, files, skills, batch, decision |
+| `anthropicaws` | `AWS_REGION` with `ANTHROPIC_AWS_API_KEY` or AWS credentials, and `ANTHROPIC_AWS_WORKSPACE_ID` | Language, files, skills |
+| `assemblyai` | `ASSEMBLYAI_API_KEY` | Transcription |
+| `azure` | `AZURE_API_KEY`, `AZURE_RESOURCE_NAME` | Language, embedding, image, speech, transcription |
+| `baseten` | `BASETEN_API_KEY` | Language, embedding |
+| `blackforestlabs` | `BFL_API_KEY` | Image, video |
+| `bytedance` | `ARK_API_KEY` | Image, video |
+| `cartesia` | `CARTESIA_API_KEY` | Speech, transcription, realtime |
+| `cerebras` | `CEREBRAS_API_KEY` | Language |
+| `cohere` | `COHERE_API_KEY` | Language, embedding, reranking |
+| `deepgram` | `DEEPGRAM_API_KEY` | Speech, transcription |
+| `deepinfra` | `DEEPINFRA_API_KEY` | Language, embedding, image |
+| `deepseek` | `DEEPSEEK_API_KEY` | Language, files |
+| `elevenlabs` | `ELEVENLABS_API_KEY` | Speech, transcription |
+| `fal` | `FAL_API_KEY` or `FAL_KEY` | Image, speech, transcription, video |
+| `fireworks` | `FIREWORKS_API_KEY` | Language, embedding, image |
+| `fishaudio` | `FISH_AUDIO_API_KEY` | Speech, transcription |
+| `gateway` | `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN` | Language, embedding, image, reranking, speech, transcription, video, realtime, decision, batch |
+| `gladia` | `GLADIA_API_KEY` | Transcription |
+| `gmicloud` | `GMI_CLOUD_APIKEY` | Language |
+| `google` | `GOOGLE_GENERATIVE_AI_API_KEY` | Language, embedding, image, speech, transcription, video, files, batch, decision, realtime, speech translation |
+| `googlevertex` | `GOOGLE_VERTEX_PROJECT` and `GOOGLE_VERTEX_LOCATION`, with `WithTokenSource` or `GOOGLE_VERTEX_API_KEY` | Language, embedding, image, speech, transcription, video; `googlevertex/anthropic`, `googlevertex/maas` and `googlevertex/xai` for partner models |
+| `groq` | `GROQ_API_KEY` | Language, transcription |
+| `heygen` | `HEYGEN_API_KEY` | Video |
+| `huggingface` | `HUGGINGFACE_API_KEY` | Language |
+| `hume` | `HUME_API_KEY` | Speech |
+| `klingai` | `KLINGAI_API_KEY`, or `KLINGAI_ACCESS_KEY` and `KLINGAI_SECRET_KEY` | Video |
+| `luma` | `LUMA_API_KEY` | Image |
+| `minimax` | `MINIMAX_API_KEY` | Language, video |
+| `mistral` | `MISTRAL_API_KEY` | Language, embedding, speech, transcription |
+| `moonshotai` | `MOONSHOT_API_KEY` | Language |
+| `openai` | `OPENAI_API_KEY` | Language, embedding, image, speech, transcription, files, skills, batch, decision, realtime, speech translation |
+| `openaicompatible` | none (`WithAPIKey`) | Language, embedding, image |
+| `openresponses` | none (`WithAPIKey`) | Language |
+| `openrouter` | `OPENROUTER_API_KEY` | Language, embedding |
+| `perplexity` | `PERPLEXITY_API_KEY` | Language, embedding, decision |
+| `prodia` | `PRODIA_TOKEN` | Language, image, video |
+| `quiverai` | `QUIVERAI_API_KEY` | Language, image |
+| `replicate` | `REPLICATE_API_TOKEN` | Image, video |
+| `revai` | `REVAI_API_KEY` | Transcription |
+| `togetherai` | `TOGETHER_API_KEY` | Language, embedding, image, reranking |
+| `topaz` | `TOPAZ_API_KEY` | Image, video |
+| `typesafeai` | `TYPESAFE_AI_API_KEY` | Decision |
+| `voyage` | `VOYAGE_API_KEY` | Embedding, reranking |
+| `xai` | `XAI_API_KEY` | Language, image, speech, transcription, video, files, batch, realtime |
+| `zai` | `ZAI_API_KEY` | Language |
+
+## Generating text
 
 ```go
-stream, err := ai.StreamText(ctx, openai.Chat("gpt-5.4"),
-	ai.WithPrompt("Tell me a story"),
-)
+result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+	Model: provider.Responses("gpt-5.4"),
+	CallSettings: ai.CallSettings{
+		MaxOutputTokens: new(500),
+	},
+	Prompt: ai.Prompt{
+		System: "You are a concise assistant.",
+		Prompt: "Explain goroutines in one paragraph.",
+	},
+})
 if err != nil {
-	log.Fatal(err)
+	return fmt.Errorf("generate text: %w", err)
 }
 
-for delta := range stream.Text() {
+fmt.Println(result.Text, result.FinishReason)
+```
+
+Messages are typed per role: `model.SystemMessage`, `model.UserMessage`, `model.AssistantMessage` and `model.ToolMessage`, each accepting only the parts its role allows. Continue a conversation by appending `result.ResponseMessages`:
+
+```go
+messages := []model.Message{
+	model.UserMessage{
+		Content: []model.UserPart{
+			model.TextPart{
+				Text: "Describe this image.",
+			},
+			model.FilePart{
+				MediaType: "image/png",
+				Data: model.FileBytes{
+					Data: imageBytes,
+				},
+			},
+		},
+	},
+}
+
+result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+	Model: languageModel,
+	Prompt: ai.Prompt{
+		Messages: messages,
+	},
+})
+if err != nil {
+	return fmt.Errorf("describe image: %w", err)
+}
+
+messages = append(messages, result.ResponseMessages...)
+```
+
+## Streaming
+
+`StreamText` returns a single-consumer stream. Generation runs while you range over one of its iterators and stops when you stop; `Result` returns the aggregated outcome afterwards.
+
+```go
+stream, err := ai.StreamText(ctx, ai.StreamTextOptions{
+	Model: languageModel,
+	Prompt: ai.Prompt{
+		Prompt: "Write a haiku about Go.",
+	},
+})
+if err != nil {
+	return fmt.Errorf("start stream: %w", err)
+}
+defer func() { _ = stream.Close() }()
+
+for delta := range stream.TextStream() {
 	fmt.Print(delta)
+}
+
+result, err := stream.Result()
+if err != nil {
+	return fmt.Errorf("stream text: %w", err)
+}
+
+fmt.Println(result.Usage.TotalTokens != nil)
+```
+
+Range over `FullStream` instead to receive every part, including reasoning, tool calls, tool results, step boundaries and errors:
+
+```go
+for part := range stream.FullStream() {
+	switch part := part.(type) {
+	case ai.TextDeltaPart:
+		fmt.Print(part.Text)
+	case ai.ToolCall:
+		fmt.Printf("\ncalling %s\n", part.ToolName)
+	case ai.FinishPart:
+		fmt.Printf("\nfinished: %s\n", part.FinishReason)
+	}
 }
 ```
 
-## Structured Output
+Set `Transforms: []ai.StreamTransform{ai.SmoothStream(ai.SmoothStreamOptions{})}` to re-chunk text into words.
 
-Generate type-safe structured data. The SDK derives the JSON Schema from your Go type automatically.
+## Structured output
+
+Set `Output` on `GenerateText` or `StreamText`. The JSON Schema is derived from the Go type, and `OutputAs` returns the validated value.
 
 ```go
 type Recipe struct {
 	Name        string   `json:"name"`
 	Ingredients []string `json:"ingredients"`
-	Steps       []string `json:"steps"`
+	Steps       []string `json:"steps" jsonschema:"description=Preparation steps in order"`
 }
 
-result, err := ai.GenerateObject[Recipe](ctx, openai.Chat("gpt-5.4"),
-	ai.WithPrompt("A recipe for pasta carbonara"),
-)
+result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+	Model: languageModel,
+	Prompt: ai.Prompt{
+		Prompt: "Give me a recipe for pancakes.",
+	},
+	Output: ai.ObjectOutput[Recipe](ai.ObjectOutputOptions{
+		Name: "recipe",
+	}),
+})
 if err != nil {
-	log.Fatal(err)
+	return fmt.Errorf("generate recipe: %w", err)
 }
 
-fmt.Println(result.Object.Name)
+recipe, err := ai.OutputAs[Recipe](result.Output)
+if err != nil {
+	return fmt.Errorf("read recipe: %w", err)
+}
 ```
 
-For streaming structured output:
+`ArrayOutput[T]`, `ChoiceOutput` and `JSONOutput` cover arrays, enumerations and free-form JSON. When streaming, `PartialOutputStream` yields partial values as the JSON arrives and `ElementStream` yields each completed array element. Upstream's deprecated `generateObject` and `streamObject` are not ported; use `Output` instead.
+
+## Tools
+
+`NewTool` derives the input schema from a Go type and decodes the model's input before calling `Execute`. With `StopWhen`, the SDK runs the tool loop: it executes tool calls and sends the results back until the model finishes or a stop condition is met.
 
 ```go
-stream, err := ai.StreamObject[Recipe](ctx, openai.Chat("gpt-5.4"),
-	ai.WithPrompt("A recipe for pasta carbonara"),
-)
-if err != nil {
-	log.Fatal(err)
+type WeatherInput struct {
+	City string `json:"city" jsonschema:"description=The city to look up"`
 }
 
-for delta := range stream.JSON() {
-	fmt.Print(delta)
-}
-
-result, err := stream.Result()
-```
-
-## Tool Calling
-
-Define tools and let the SDK run the automatic tool loop.
-
-```go
-weatherTool := ai.Tool{
+weather := ai.NewTool(ai.ToolDefinition[WeatherInput, string]{
 	Name:        "get_weather",
-	Description: "Get the current weather for a city",
-	InputSchema: ai.SchemaFor[WeatherInput](),
-	Execute: func(ctx context.Context, input json.RawMessage) (string, error) {
-		var params WeatherInput
-		json.Unmarshal(input, &params)
-		return fmt.Sprintf("72°F and sunny in %s", params.City), nil
+	Description: "Get the current weather for a city.",
+	Execute: func(ctx context.Context, input WeatherInput, options ai.ToolExecutionOptions) (string, error) {
+		return "sunny, 21°C in " + input.City, nil
+	},
+})
+
+result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+	Model: languageModel,
+	Prompt: ai.Prompt{
+		Prompt: "What's the weather in Lisbon?",
+	},
+	Tools: []ai.Tool{
+		weather,
+	},
+	StopWhen: []ai.StopCondition{
+		ai.IsStepCount(5),
+	},
+})
+```
+
+The context passed to `Execute` is cancelled with the generation, and carries any values you attach to it. `ToolExecutionOptions.Preliminary` reports progress while a tool runs. Provider tools are declared with `ai.ProviderExecutedTool`, for example `ai.ProviderExecutedTool(anthropic.WebSearch20250305(anthropic.WebSearchArgs{}))`, and dynamic tools, such as tools discovered from an MCP server, with `ai.DynamicTool`.
+
+### Tool approvals
+
+A tool with `NeedsApproval` stops the loop with an `ai.ToolApprovalRequest` instead of running. Answer it with a `model.ToolApprovalResponsePart` and call the model again: approved calls run, and denied calls are reported to the model.
+
+```go
+deleteFile := ai.NewTool(ai.ToolDefinition[DeleteInput, string]{
+	Name:        "delete_file",
+	Description: "Delete a file.",
+	NeedsApproval: func(ctx context.Context, input DeleteInput, options ai.ToolNeedsApprovalOptions) (bool, error) {
+		return true, nil
+	},
+	Execute: deleteFileFromDisk,
+})
+
+options := ai.GenerateTextOptions{
+	Model: languageModel,
+	Prompt: ai.Prompt{
+		Messages: messages,
+	},
+	Tools: []ai.Tool{
+		deleteFile,
+	},
+	StopWhen: []ai.StopCondition{
+		ai.IsStepCount(5),
 	},
 }
 
-result, err := ai.GenerateText(ctx, openai.Chat("gpt-5.4"),
-	ai.WithPrompt("What's the weather in Paris?"),
-	ai.WithTools(weatherTool),
-	ai.WithMaxSteps(3),
-)
-```
-
-## Multimodal Output
-
-Results carry every content segment the model produced, not just text. Generated files (images, audio), source citations, and reasoning blocks all flow through the normalized `GenerateResult` alongside `Text`.
-
-### Image Output
-
-OpenRouter returns image-generation models' output as base64 data URLs on `message.images[]`. The SDK decodes those into `File` entries:
-
-```go
-result, err := ai.GenerateText(ctx, openrouter.Chat("google/gemini-2.5-flash-image-preview"),
-	ai.WithPrompt("A watercolor lighthouse at sunrise"),
-	ai.WithModalities(model.ModalityText, model.ModalityImage),
-)
+result, err := ai.GenerateText(ctx, options)
 if err != nil {
-	log.Fatal(err)
+	return fmt.Errorf("generate text: %w", err)
 }
 
-for _, file := range result.Files {
-	// file.Data is already base64-decoded bytes.
-	os.WriteFile("out.png", file.Data, 0o644)
-	fmt.Println("saved", file.MIMEType)
-}
-```
+var responses []model.ToolPart
 
-For streaming, iterate files as they arrive:
-
-```go
-stream, _ := ai.StreamText(ctx, model,
-	ai.WithPrompt(prompt),
-	ai.WithModalities(model.ModalityText, model.ModalityImage),
-)
-for file := range stream.Files() {
-	save(file)
-}
-```
-
-### Audio Output
-
-OpenAI `gpt-audio` and friends emit audio via `message.audio.data`. Request it with `WithAudio`:
-
-```go
-result, err := ai.GenerateText(ctx, openai.Chat("gpt-audio"),
-	ai.WithPrompt("Say hello in a warm voice."),
-	ai.WithModalities(model.ModalityText, model.ModalityAudio),
-	ai.WithAudio("alloy", "wav"),
-)
-// result.Files[0] holds the audio bytes, result.Text holds the transcript.
-```
-
-### Reasoning Output
-
-Anthropic extended thinking, OpenAI o-series, and OpenRouter reasoning models populate `Reasoning` blocks on the result. Signatures and formats are preserved so blocks round-trip back to the provider on follow-up turns:
-
-```go
-result, err := ai.GenerateText(ctx, anthropic.Chat("claude-opus-4-5"),
-	ai.WithPrompt("Solve this step-by-step..."),
-	ai.WithReasoning(model.ReasoningOptions{Effort: "high"}),
-)
-
-fmt.Println("reasoning:", result.ReasoningText())
-fmt.Println("answer:", result.Text)
-
-for _, block := range result.Reasoning {
-	if block.Redacted {
-		continue // encrypted/summary block; keep for round-tripping
+for _, part := range result.Content {
+	request, isRequest := part.(ai.ToolApprovalRequest)
+	if !isRequest {
+		continue
 	}
-	fmt.Println(block.Format, block.Signature, block.Text)
+
+	responses = append(responses, model.ToolApprovalResponsePart{
+		ApprovalID: request.ApprovalID,
+		Approved:   askUser(request.ToolCall),
+	})
 }
+
+options.Messages = append(messages, result.ResponseMessages...)
+options.Messages = append(options.Messages, model.ToolMessage{
+	Content: responses,
+})
+
+result, err = ai.GenerateText(ctx, options)
 ```
 
-When running a tool loop, the SDK automatically re-sends reasoning blocks back to the provider on subsequent turns so thinking state carries forward.
+`ToolApproval` replaces the per-tool functions with one policy that can approve, deny or defer to the user. Set `ToolApprovalSecret` to sign approval requests, so that approvals sent back by a client cannot be forged.
 
-### Source Citations
+## Agents
 
-Web search tools (OpenAI `gpt-5-search`, OpenRouter models with web grounding) emit `url_citation` annotations that surface as `Source` entries:
-
-```go
-for _, src := range result.Sources {
-	fmt.Printf("%s: %s [%d-%d]\n", src.Title, src.URL, src.StartIndex, src.EndIndex)
-}
-```
-
-### File Inputs
-
-Send PDFs, audio, or arbitrary files as user input via `FilePart`:
+A `ToolLoopAgent` bundles a model, instructions, tools and stop conditions for reuse. `Generate` and `Stream` accept a prompt or messages per call.
 
 ```go
-pdfBytes, _ := os.ReadFile("doc.pdf")
-
-result, err := ai.GenerateText(ctx, anthropic.Chat("claude-opus-4-5"),
-	ai.WithMessages(ai.Message{
-		Role: ai.RoleUser,
-		Parts: []ai.Part{
-			ai.TextPart{Text: "Summarize this document."},
-			ai.FilePart{Data: pdfBytes, MIMEType: "application/pdf"},
+agent := ai.NewToolLoopAgent(ai.ToolLoopAgentSettings{
+	ID: "weather",
+	GenerateTextOptions: ai.GenerateTextOptions{
+		Model: languageModel,
+		Prompt: ai.Prompt{
+			System: "You answer questions about the weather.",
 		},
-	}),
-)
+		Tools: []ai.Tool{
+			weather,
+		},
+	},
+})
+
+result, err := agent.Generate(ctx, ai.AgentCallOptions{
+	Prompt: "Do I need a jacket in Oslo today?",
+})
 ```
 
-Image inputs use the existing `ai.ImagePart` for clarity; other MIME types use `FilePart`.
+Without `StopWhen`, an agent stops after 20 steps. `ai.Agent` is an interface, so applications can supply their own implementations.
 
 ## Embeddings
 
 ```go
-result, err := ai.Embed(ctx, openai.Embedding("text-embedding-3-small"), "Hello, world!")
+result, err := ai.EmbedMany(ctx, ai.EmbedManyOptions{
+	Model: provider.Embedding("text-embedding-3-small"),
+	Values: []string{
+		"sunny day at the beach",
+		"rainy afternoon in the city",
+	},
+})
+if err != nil {
+	return fmt.Errorf("embed values: %w", err)
+}
 
-// Or batch:
-results, err := ai.EmbedMany(ctx, openai.Embedding("text-embedding-3-small"),
-	[]string{"first", "second", "third"},
-)
+fmt.Println(len(result.Embeddings))
 ```
 
-## Images (dedicated endpoint)
+`Embed` embeds a single value. `EmbedMany` splits values into batches when the model limits the batch size and runs them concurrently when the model allows it.
 
-For providers with a separate image-generation endpoint (e.g. OpenAI `/images`):
+## Images, speech, transcription and reranking
 
 ```go
-result, err := ai.GenerateImage(ctx, openai.Image("gpt-image-1"), model.ImageRequest{
-	Prompt:       "A watercolor lighthouse at sunrise",
-	Size:         "1024x1024",
-	OutputFormat: "png",
+images, err := ai.GenerateImage(ctx, ai.GenerateImageOptions{
+	Model:  provider.Image("gpt-image-1"),
+	Prompt: "A gopher reading a book under a tree.",
+	Size:   "1024x1024",
+})
+
+speech, err := ai.GenerateSpeech(ctx, ai.GenerateSpeechOptions{
+	Model: provider.Speech("gpt-4o-mini-tts"),
+	Text:  "Hello from Go!",
+	Voice: "alloy",
+})
+
+transcript, err := ai.Transcribe(ctx, ai.TranscribeOptions{
+	Model: provider.Transcription("gpt-4o-mini-transcribe"),
+	Audio: model.FileBytes{
+		Data: audio,
+	},
+})
+
+ranking, err := ai.Rerank(ctx, ai.RerankOptions[string]{
+	Model:     cohere.New().Reranking("rerank-v3.5"),
+	Query:     "capital of France",
+	Documents: documents,
+	TopN:      new(3),
 })
 ```
 
-For chat-based image generation (OpenRouter, Gemini), use `ai.GenerateText` with `WithModalities` — see [Image Output](#image-output) above.
+The results expose `images.Images`, `speech.Audio`, `transcript.Text` with timed `Segments`, and `ranking.Ranking` with scores and original indices.
 
-## Audio
+## Middleware
+
+Middleware wraps a model to transform its call options or surround its calls.
 
 ```go
-speech, err := ai.GenerateSpeech(ctx, openai.Speech("gpt-4o-mini-tts"), model.SpeechRequest{
-	Input:          "Hello from the AI SDK for Go.",
-	Voice:          "alloy",
-	ResponseFormat: "mp3",
-})
-
-transcript, err := ai.Transcribe(ctx, openai.Transcription("gpt-4o-mini-transcribe"), model.TranscriptionRequest{
-	Audio: model.AudioInput{
-		Data:     audioBytes,
-		Filename: "sample.mp3",
+wrapped := middleware.WrapLanguageModel(middleware.WrapLanguageModelOptions{
+	Model: languageModel,
+	Middleware: []middleware.Language{
+		middleware.DefaultSettings(model.CallOptions{
+			MaxOutputTokens: new(1024),
+		}),
+		middleware.SimulateStreaming(),
 	},
 })
 ```
 
-For chat-based audio generation (OpenAI `gpt-audio`), use `ai.GenerateText` with `WithAudio` — see [Audio Output](#audio-output) above.
+Built-in middleware includes `DefaultSettings`, `DefaultInstructions`, `ExtractReasoning`, `ExtractJSON`, `SimulateStreaming` and `AddToolInputExamples`. Write your own by setting the `TransformParams`, `WrapGenerate` or `WrapStream` fields of `middleware.Language`.
 
-## Reranking
+## Provider registry
+
+A `Registry` resolves combined `provider:model` IDs, so the model can come from configuration.
 
 ```go
-result, err := ai.Rerank(ctx, cohere.Rerank("rerank-v3.5"), model.RerankRequest{
-	Query:     "golang concurrency",
-	Documents: docs,
+registry := ai.NewRegistry(ai.RegistryOptions{
+	Providers: map[string]model.Provider{
+		"anthropic": anthropic.New(),
+		"openai":    openai.New(),
+	},
+})
+
+languageModel, err := registry.LanguageModel("anthropic:claude-sonnet-4-5")
+if err != nil {
+	return fmt.Errorf("resolve model: %w", err)
+}
+```
+
+`RegistryOptions.LanguageModelMiddleware` wraps every model the registry returns. `ai.NewCustomProvider` assigns models to aliases, with an optional fallback provider.
+
+## UI message streams
+
+The `ui` package implements the AI SDK UI protocol, so a Go `net/http` handler can serve a `useChat` frontend.
+
+```go
+func (h *chatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var request struct {
+		Messages []ui.Message `json:"messages"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+
+		return
+	}
+
+	messages, err := ui.ValidateMessages(ctx, ui.ValidateMessagesOptions{
+		Messages: request.Messages,
+	})
+	if err != nil {
+		http.Error(w, "invalid messages", http.StatusBadRequest)
+
+		return
+	}
+
+	prompt, err := ui.ConvertToModelMessages(ctx, messages, ui.ConvertToModelMessagesOptions{})
+	if err != nil {
+		http.Error(w, "invalid messages", http.StatusBadRequest)
+
+		return
+	}
+
+	stream, err := ai.StreamText(ctx, ai.StreamTextOptions{
+		Model: h.model,
+		Prompt: ai.Prompt{
+			Messages: prompt,
+		},
+	})
+	if err != nil {
+		http.Error(w, "chat unavailable", http.StatusInternalServerError)
+
+		return
+	}
+	defer func() { _ = stream.Close() }()
+
+	_ = ui.PipeMessageStreamToResponse(w, ui.MessageStreamResponseOptions{
+		Stream: ui.ToMessageStream(ctx, stream.FullStream(), ui.MessageStreamOptions{}),
+	})
+}
+```
+
+`ui.PipeAgentStreamToResponse` does the same for an agent in one call. `ui.CreateMessageStream` composes streams and custom data parts through a `Writer`, and `ui.ReadMessageStream` rebuilds messages from a stream. See [examples/chat-server](examples/chat-server).
+
+## Provider options and metadata
+
+Provider-specific settings are typed structs keyed by provider namespace. Read provider metadata back with `model.ProviderValue`.
+
+```go
+result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+	Model: anthropic.New().Messages("claude-sonnet-4-5"),
+	Prompt: ai.Prompt{
+		Prompt: "How many prime numbers are there below 100?",
+	},
+	ProviderOptions: model.ProviderOptions{
+		"anthropic": anthropic.MessagesOptions{
+			Thinking: &anthropic.ThinkingOptions{
+				Type:         anthropic.ThinkingEnabled,
+				BudgetTokens: new(4096),
+			},
+		},
+	},
+})
+if err != nil {
+	return fmt.Errorf("generate text: %w", err)
+}
+
+metadata, found, err := model.ProviderValue[anthropic.MessagesMetadata](result.ProviderMetadata, "anthropic")
+```
+
+For provider-independent reasoning control, set `CallSettings.Reasoning`, for example to `model.ReasoningHigh`.
+
+## Errors
+
+Errors are typed values that wrap their causes. Inspect them with `errors.Is` and `errors.As`:
+
+```go
+if apiErr, ok := errors.AsType[*model.APICallError](err); ok {
+	fmt.Println(apiErr.StatusCode, apiErr.IsRetryable)
+}
+
+if errors.Is(err, model.ErrNoContentGenerated) {
+	fmt.Println("the model returned no content")
+}
+```
+
+Model calls are retried twice by default; set `MaxRetries` to change that.
+
+## Additional packages
+
+| Package | Contents |
+| --- | --- |
+| `pkg/mcp` | Model Context Protocol client: server tools as `[]ai.Tool`, resources, prompts, elicitation, Streamable HTTP, SSE and stdio transports, OAuth |
+| `pkg/harness` | Drives coding-agent runtimes inside a sandbox. Adapters: `harness/acp`, `claudecode`, `codex`, `cursor`, `deepagents`, `fx`, `githubcopilot`, `grokbuild` and `opencode` |
+| `pkg/sandbox` | Sandbox session contract, with `sandbox/vercel` (Vercel Sandbox microVMs) and `sandbox/local` (a local shell that is **not isolated**); the `sandboxshell` module adds an isolated in-memory bash sandbox |
+| `pkg/tools/bash` | A bash tool that runs commands in any sandbox session |
+| `pkg/devtools` | Records calls for local debugging; `go run github.com/aarock1234/ai/pkg/devtools/cmd/devtools` serves the viewer |
+| `pkg/policyopa` | Open Policy Agent tool approval policies and capability middleware |
+
+OpenTelemetry, code mode, the terminal UI, the OPA WebAssembly client and the in-memory shell sandbox are nested modules, so the core module does not depend on their libraries. Install them separately:
+
+```sh
+go get github.com/aarock1234/ai/otel           # OpenTelemetry spans: otel.New, otel.NewLegacy
+go get github.com/aarock1234/ai/codemode       # TypeScript code mode over your tools: codemode.NewTool
+go get github.com/aarock1234/ai/tui            # Terminal UI for an ai.Agent: tui.RunAgent
+go get github.com/aarock1234/ai/policyopawasm  # In-process OPA WebAssembly policies: policyopawasm.New
+go get github.com/aarock1234/ai/sandboxshell   # Isolated in-memory bash sandbox: sandboxshell.New
+```
+
+Combine MCP tools, a sandboxed bash tool and OpenTelemetry in one call:
+
+```go
+transport, err := mcp.NewHTTPTransport(mcp.HTTPTransportOptions{
+	URL: "https://mcp.example.com/mcp",
+})
+if err != nil {
+	return fmt.Errorf("create transport: %w", err)
+}
+
+client, err := mcp.NewClient(ctx, mcp.ClientOptions{
+	Transport: transport,
+})
+if err != nil {
+	return fmt.Errorf("connect to mcp server: %w", err)
+}
+defer func() {
+	err = errors.Join(err, client.Close(context.WithoutCancel(ctx)))
+}()
+
+tools, err := client.Tools(ctx, mcp.ToolsOptions{})
+if err != nil {
+	return fmt.Errorf("list mcp tools: %w", err)
+}
+
+session, err := local.New(ctx, local.Options{})
+if err != nil {
+	return fmt.Errorf("create sandbox: %w", err)
+}
+defer func() {
+	err = errors.Join(err, session.Destroy(context.WithoutCancel(ctx)))
+}()
+
+bashTool, err := bash.New(ctx, bash.Options{
+	Sandbox: session,
+})
+if err != nil {
+	return fmt.Errorf("create bash tool: %w", err)
+}
+
+result, err := ai.GenerateText(ctx, ai.GenerateTextOptions{
+	Model: languageModel,
+	Prompt: ai.Prompt{
+		Prompt: "Summarize the files in the working directory.",
+	},
+	Tools: append(tools, bashTool),
+	StopWhen: []ai.StopCondition{
+		ai.IsStepCount(10),
+	},
+	Telemetry: ai.TelemetryOptions{
+		Integrations: []ai.Telemetry{
+			otel.New(otel.Options{}),
+		},
+	},
 })
 ```
 
-## Providers
+## Go adaptations
 
-Swap providers without changing your application code.
+The API follows the TypeScript SDK closely, with these deliberate differences:
 
-```go
-// OpenAI
-model := openai.Chat("gpt-5.4")
+- **`context.Context` instead of abort signals.** Cancellation and deadlines come from the context passed to each function. Application values that upstream passes to tools as `context` travel as context values.
+- **Single-consumer, pull-based streams.** `StreamText` streams are Go iterators that run the generation on the consumer's goroutine. Range over exactly one stream, once; breaking out of the loop stops the generation and releases the provider connection. There is no tee'd stream fan-out.
+- **Typed provider options.** `model.ProviderOptions` values are each provider's options struct, and `model.ProviderValue` decodes options and metadata into a typed struct.
+- **Typed per-role messages.** Each message role is its own type and accepts only the parts its role allows, so many invalid prompts fail to compile.
+- **Options structs and callbacks.** Each function takes one options struct; callbacks are func fields that receive the context and a single event struct.
+- **Typed outputs.** Parsed outputs are returned as `any`; `ai.OutputAs[T]` converts them to their Go type.
 
-// OpenRouter (access 200+ models)
-model := openrouter.Chat("anthropic/claude-sonnet-4-20250514")
+## Examples
 
-// Anthropic
-model := anthropic.Chat("claude-sonnet-4-5")
+| Example                                             | Shows                                           |
+| --------------------------------------------------- | ----------------------------------------------- |
+| [generate-text](examples/generate-text)             | Generating text with usage                      |
+| [stream-text](examples/stream-text)                 | Streaming text deltas                           |
+| [conversation](examples/conversation)               | Multi-turn conversation history                 |
+| [generate-object](examples/generate-object)         | Structured output with `ObjectOutput`           |
+| [stream-object](examples/stream-object)             | Streaming partial structured output             |
+| [tool-calling](examples/tool-calling)               | Typed tools and the tool loop                   |
+| [agent](examples/agent)                             | A reusable `ToolLoopAgent`                      |
+| [multi-provider](examples/multi-provider)           | Selecting models with a registry                |
+| [embeddings](examples/embeddings)                   | Embeddings and cosine similarity                |
+| [rerank](examples/rerank)                           | Reranking documents                             |
+| [generate-image](examples/generate-image)           | Image generation with provider options          |
+| [generate-speech](examples/generate-speech)         | Text to speech                                  |
+| [transcribe](examples/transcribe)                   | Speech to text                                  |
+| [chat-server](examples/chat-server)                 | Streaming to `useChat` from a `net/http` server |
+| [mcp](examples/mcp)                                 | Listing an MCP server's tools over stdio        |
 
-// Cohere reranking
-ranker := cohere.Rerank("rerank-v3.5")
+Run an example with `go run ./examples/<name>` after setting the provider's API key.
 
-// Any OpenAI-compatible API
-model := openai.Chat("my-model", openai.WithBaseURL("https://my-api.example.com/v1"))
-```
+## Migrating
 
-### Provider Options
-
-```go
-// Explicit API key
-openai.Chat("gpt-5.4", openai.WithAPIKey("sk-..."))
-
-// Custom HTTP client
-openai.Chat("gpt-5.4", openai.WithHTTPClient(myClient))
-
-// OpenAI organization
-openai.Chat("gpt-5.4", openai.WithOrganization("org-..."))
-
-// OpenRouter headers
-openrouter.Chat("openai/gpt-5.4",
-	openrouter.WithHTTPReferer("https://myapp.com"),
-	openrouter.WithSiteURL("My App"),
-)
-```
-
-By default, providers read API keys from the environment (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
-
-## Provider Registry
-
-For dynamic, config-driven provider selection:
-
-```go
-registry := provider.NewRegistry()
-registry.Register("openai", openai.New())
-registry.Register("openrouter", openrouter.New())
-
-p, ok := registry.Get(os.Getenv("AI_PROVIDER"))
-if !ok {
-	log.Fatal("unknown provider")
-}
-
-result, err := ai.GenerateText(ctx, p.Chat(os.Getenv("AI_MODEL")),
-	ai.WithPrompt("Hello"),
-)
-```
-
-## Generation Options
-
-| Option | Description |
-|---|---|
-| `WithPrompt(s)` | Set the user prompt |
-| `WithSystem(s)` | Set the system message |
-| `WithMessages(m...)` | Provide full conversation history |
-| `WithTools(t...)` | Register tools for the model |
-| `WithActiveTools(names...)` | Limit the active tool subset |
-| `WithToolChoice(choice)` | Control tool selection policy |
-| `WithMaxSteps(n)` | Max iterations in the tool loop (default: 1) |
-| `WithMaxRetries(n)` | Retry retryable provider failures |
-| `WithMaxTokens(n)` | Limit response token count |
-| `WithTemperature(f)` | Sampling temperature (0.0 -- 2.0) |
-| `WithTopP(f)` | Nucleus sampling parameter |
-| `WithTopK(n)` | Top-k sampling parameter |
-| `WithPresencePenalty(f)` | Penalize repeated topics |
-| `WithFrequencyPenalty(f)` | Penalize repeated tokens |
-| `WithSeed(n)` | Request deterministic sampling when supported |
-| `WithStopSequences(s...)` | Stop generation at these sequences |
-| `WithHeaders(h)` | Attach per-request HTTP headers |
-| `WithTimeout(d)` | Overall request timeout |
-| `WithModalities(m...)` | Request `text`, `image`, and/or `audio` output |
-| `WithAudio(voice, format)` | Configure audio output (voice, encoding) |
-| `WithReasoning(opts)` | Configure reasoning budget for reasoning models |
-| `WithReasoningEffort(level)` | Shortcut for `"low" / "medium" / "high"` reasoning |
-| `WithPrediction(content)` | Attach predicted output for faster generation |
-| `WithProviderOption(p, k, v)` | Provider-specific request option passthrough |
-
-## Result Shape
-
-`GenerateResult` and `Step` expose every content segment the provider returned:
-
-| Field | Type | Populated when |
-|---|---|---|
-| `Text` | `string` | Always; concatenated plain-text output |
-| `Reasoning` | `[]Reasoning` | Model emitted thinking / reasoning_details blocks |
-| `Files` | `[]File` | Model emitted images or audio |
-| `Sources` | `[]Source` | Model cited web pages or documents |
-| `ToolCalls` | `[]ToolCall` | Model requested tool invocations |
-| `ToolResults` | `[]ToolResult` | Tool loop executed tools |
-| `Usage` | `Usage` | Always; input / output / reasoning / audio / image breakdown |
-| `Warnings` | `[]string` | Provider surfaced non-fatal issues (refusals, unsupported settings) |
-| `Metadata` | `ProviderMetadata` | Always; request id, model id, provider-specific fields |
-| `Steps` | `[]Step` | `WithMaxSteps > 1` tool loop ran |
-
-`result.ReasoningText()` concatenates non-redacted reasoning for quick display. `Reasoning[i].Signature` and `Signature.Format` round-trip back to providers that verify prior thinking on follow-up turns — the SDK does this automatically in the tool loop.
-
-## Architecture
-
-```
-pkg/
-├── ai/            Consumer API: text, object, image, audio, rerank, middleware
-├── model/         Provider contracts and normalized request/response types
-└── provider/
-    ├── anthropic/ Anthropic Messages API provider
-    ├── cohere/    Cohere reranking provider
-    ├── openai/    OpenAI provider + shared OpenAI-compatible codec
-    └── openrouter/ OpenRouter provider
-
-internal/
-├── apierror/      Shared API error type
-├── provideropts/  Provider-specific request option passthrough
-├── schema/        JSON Schema generation from Go types
-└── sse/           Server-sent events parser
-```
-
-The SDK is built on three layers:
-
-1. **`ai`** -- The functions you call. Provider-agnostic.
-2. **`model`** -- The interfaces providers implement plus normalized request/response/content types.
-3. **`provider/*`** -- Concrete implementations. OpenRouter reuses the OpenAI codec since they share the same wire format.
-
-## Adding a Provider
-
-Implement `model.Model`:
-
-```go
-type Model interface {
-	Provider() string
-	ModelID() string
-	DoGenerate(ctx context.Context, req *Request) (*Response, error)
-	DoStream(ctx context.Context, req *Request) (*StreamResponse, error)
-}
-```
-
-Populate `Response.Content` with any of `TextContent`, `ReasoningContent`, `FileContent`, `SourceContent`, `ToolCallContent`, or `ToolResultContent` depending on what the provider emits. Corresponding stream chunks (`TextDelta`, `ReasoningDelta`, `FileChunk`, `SourceChunk`, `ToolCallDelta`, `FinishChunk`, `UsageChunk`, `ErrorChunk`) flow through `Model.DoStream`.
-
-If your provider uses the OpenAI-compatible API format, import `pkg/provider/openai` and reuse its codec (`EncodeRequest`, `DecodeResponse`, `DoRequest`, `DoStreamRequest`, `DecodeStream`). See `pkg/provider/openrouter/` for a complete example.
+See [docs/migration.md](docs/migration.md) for changes from earlier versions of this SDK.
 
 ## License
 
-MIT
+This SDK is licensed under the [Apache License 2.0](LICENSE), the same license as the [Vercel AI SDK](https://github.com/vercel/ai) it ports. See [NOTICE](NOTICE) for attribution and the embedded upstream files.
