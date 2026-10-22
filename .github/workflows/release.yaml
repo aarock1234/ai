@@ -25,7 +25,43 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.1
+          version: v2.15.0
+          args: --tests=false
+
+      - name: Lint OpenTelemetry module
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --tests=false
+          working-directory: otel
+
+      - name: Lint code mode module
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --tests=false
+          working-directory: codemode
+
+      - name: Lint terminal UI module
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --tests=false
+          working-directory: tui
+
+      - name: Lint OPA WebAssembly module
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --tests=false
+          working-directory: policyopawasm
+
+      - name: Lint in-memory shell sandbox module
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --tests=false
+          working-directory: sandboxshell
 
       - name: Build
         run: make build

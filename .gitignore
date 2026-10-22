@@ -42,3 +42,5 @@ go.work.sum
 
 # LLM files
 plans/
+# Local live-check scripts
+/live/
