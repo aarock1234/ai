@@ -9,6 +9,10 @@ type node struct {
 	ContentEncoding      string                `json:"contentEncoding,omitempty"`
 	Description          *string               `json:"description,omitempty"`
 	Enum                 []string              `json:"enum,omitempty"`
+	MinLength            *int                  `json:"minLength,omitempty"`
+	MaxLength            *int                  `json:"maxLength,omitempty"`
+	Minimum              *float64              `json:"minimum,omitempty"`
+	Maximum              *float64              `json:"maximum,omitempty"`
 	AnyOf                []*node               `json:"anyOf,omitempty"`
 	Items                *node                 `json:"items,omitempty"`
 	MinItems             *int                  `json:"minItems,omitempty"`

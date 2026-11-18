@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 )
 
@@ -23,30 +22,51 @@ var (
 	rawMessageType = reflect.TypeFor[json.RawMessage]()
 )
 
-// Generate returns the JSON Schema of T. Struct fields follow their json tags;
-// fields tagged omitempty or omitzero are optional, pointers are nullable, and
-// objects reject additional properties. The jsonschema tag adds keywords:
+// Writer is who writes the values that a schema describes. Models and
+// programs leave out optional values differently, so the schema of a field
+// tagged omitempty or omitzero depends on it.
+type Writer int
+
+const (
+	// ModelWriter describes values that a model writes, such as structured
+	// outputs and tool inputs. The schema is valid for strict structured
+	// output: every property is required, and fields tagged omitempty or
+	// omitzero accept null instead of being left out. Decoding null leaves
+	// the Go zero value, as leaving the field out would.
+	ModelWriter Writer = iota
+
+	// ProgramWriter describes values that encoding/json writes, such as tool
+	// outputs. Fields tagged omitempty or omitzero may be left out, and nil
+	// slices, maps and byte slices are null.
+	ProgramWriter
+)
+
+// Generate returns the JSON Schema of values of T that a model writes. Struct
+// fields follow their json tags, pointers are nullable, and objects reject
+// additional properties. The jsonschema tag adds keywords separated by
+// commas. A description comes last and runs to the end of the tag, so it may
+// contain commas:
 //
-//	`jsonschema:"description=The city name"`
 //	`jsonschema:"enum=celsius|fahrenheit"`
+//	`jsonschema:"minLength=1,maxLength=256,description=The title, in title case"`
+//	`jsonschema:"minimum=0,maximum=100"`
+//	`jsonschema:"minItems=1,maxItems=25"`
 func Generate[T any]() (json.RawMessage, error) {
 	return GenerateWithOptions[T](GenerateOptions{})
 }
 
 // GenerateOptions configure GenerateWithOptions.
 type GenerateOptions struct {
-	// NullableCollections makes the schemas of slices, maps and byte slices
-	// accept null, because encoding/json writes nil ones as null. Use it for
-	// values that Go encodes, such as tool outputs.
-	NullableCollections bool
+	// Writer is who writes the values. The zero value is ModelWriter.
+	Writer Writer
 }
 
 // GenerateWithOptions returns the JSON Schema of T like Generate, adjusted
 // by options.
 func GenerateWithOptions[T any](options GenerateOptions) (json.RawMessage, error) {
 	generator := generator{
-		visiting:            make(map[reflect.Type]bool),
-		nullableCollections: options.NullableCollections,
+		visiting: make(map[reflect.Type]bool),
+		writer:   options.Writer,
 	}
 
 	root, err := generator.generate(reflect.TypeFor[T]())
@@ -63,8 +83,14 @@ func GenerateWithOptions[T any](options GenerateOptions) (json.RawMessage, error
 }
 
 type generator struct {
-	visiting            map[reflect.Type]bool
-	nullableCollections bool
+	visiting map[reflect.Type]bool
+	writer   Writer
+}
+
+// nullableCollections reports whether nil slices, maps and byte slices may
+// be written as null, which encoding/json does.
+func (g *generator) nullableCollections() bool {
+	return g.writer == ProgramWriter
 }
 
 func (g *generator) generate(t reflect.Type) (*node, error) {
@@ -122,7 +148,12 @@ func (g *generator) generateKind(t reflect.Type) (*node, error) {
 		}, nil
 
 	case reflect.Pointer:
-		return g.generateNullable(t.Elem())
+		inner, err := g.generate(t.Elem())
+		if err != nil {
+			return nil, err
+		}
+
+		return nullable(inner), nil
 
 	case reflect.Slice:
 		return g.generateSlice(t)
@@ -141,12 +172,8 @@ func (g *generator) generateKind(t reflect.Type) (*node, error) {
 	}
 }
 
-func (g *generator) generateNullable(element reflect.Type) (*node, error) {
-	inner, err := g.generate(element)
-	if err != nil {
-		return nil, err
-	}
-
+// nullable returns a schema that accepts null or a value of inner.
+func nullable(inner *node) *node {
 	return &node{
 		AnyOf: []*node{
 			inner,
@@ -154,7 +181,7 @@ func (g *generator) generateNullable(element reflect.Type) (*node, error) {
 				Type: "null",
 			},
 		},
-	}, nil
+	}
 }
 
 func (g *generator) generateSlice(t reflect.Type) (*node, error) {
@@ -163,7 +190,7 @@ func (g *generator) generateSlice(t reflect.Type) (*node, error) {
 		return &node{
 			Type:            "string",
 			ContentEncoding: "base64",
-			nullable:        g.nullableCollections,
+			nullable:        g.nullableCollections(),
 		}, nil
 	}
 
@@ -175,7 +202,7 @@ func (g *generator) generateSlice(t reflect.Type) (*node, error) {
 	return &node{
 		Type:     "array",
 		Items:    items,
-		nullable: g.nullableCollections,
+		nullable: g.nullableCollections(),
 	}, nil
 }
 
@@ -208,7 +235,7 @@ func (g *generator) generateMap(t reflect.Type) (*node, error) {
 		AdditionalProperties: &additionalProperties{
 			schema: values,
 		},
-		nullable: g.nullableCollections,
+		nullable: g.nullableCollections(),
 	}, nil
 }
 
@@ -230,16 +257,14 @@ func (g *generator) generateStruct(t reflect.Type) (*node, error) {
 			return nil, fmt.Errorf("%w: %s has duplicate JSON field %q", ErrUnsupportedType, t, field.name)
 		}
 
-		fieldSchema, err := g.generate(field.goType)
+		fieldSchema, err := g.generateField(field)
 		if err != nil {
 			return nil, fmt.Errorf("field %s.%s: %w", t, t.Field(index).Name, err)
 		}
 
-		fieldSchema.Description = field.description
-		fieldSchema.Enum = field.enum
 		properties[field.name] = fieldSchema
 
-		if !field.optional {
+		if g.requires(field) {
 			required = append(required, field.name)
 		}
 	}
@@ -252,6 +277,57 @@ func (g *generator) generateStruct(t reflect.Type) (*node, error) {
 			allowed: new(false),
 		},
 	}, nil
+}
+
+// generateField returns the schema of a struct field. The tag's keywords
+// constrain the value, so they apply beneath any null alternative, while the
+// description covers the whole field.
+func (g *generator) generateField(field structField) (*node, error) {
+	valueType, isPointer := pointedType(field.goType)
+
+	value, err := g.generate(valueType)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, keyword := range field.keywords {
+		if err := keyword.apply(value); err != nil {
+			return nil, err
+		}
+	}
+
+	fieldSchema := value
+	if isPointer || g.writesNull(field) {
+		fieldSchema = nullable(value)
+	}
+
+	fieldSchema.Description = field.description
+
+	return fieldSchema, nil
+}
+
+// requires reports whether a field's property must be present. A program
+// leaves optional fields out, while a model writes null for them.
+func (g *generator) requires(field structField) bool {
+	return g.writer == ModelWriter || !field.optional
+}
+
+// writesNull reports whether a field is written as null when it is empty,
+// instead of being left out.
+func (g *generator) writesNull(field structField) bool {
+	return g.writer == ModelWriter && field.optional
+}
+
+// pointedType returns the type a chain of pointers points to, and whether t
+// is a pointer at all.
+func pointedType(t reflect.Type) (reflect.Type, bool) {
+	isPointer := t.Kind() == reflect.Pointer
+
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	return t, isPointer
 }
 
 func hasCustomEncoding(t reflect.Type) bool {
@@ -273,86 +349,4 @@ func hasCustomEncoding(t reflect.Type) bool {
 	}
 
 	return false
-}
-
-// structField is a struct field as it appears in JSON.
-type structField struct {
-	name        string
-	goType      reflect.Type
-	optional    bool
-	description *string
-	enum        []string
-}
-
-// parseField reads a field's json and jsonschema tags. It reports false for
-// fields that are not encoded.
-func parseField(field reflect.StructField) (structField, bool, error) {
-	// As in encoding/json, the tag "-" skips the field, while "-," names it
-	// "-".
-	tag := field.Tag.Get("json")
-	if tag == "-" || !field.IsExported() {
-		return structField{}, false, nil
-	}
-
-	name, options, _ := strings.Cut(tag, ",")
-
-	if field.Anonymous {
-		return structField{}, false, fmt.Errorf("%w: embedded fields need an explicit schema", ErrUnsupportedType)
-	}
-
-	if name == "" {
-		name = field.Name
-	}
-
-	parsed := structField{
-		name:   name,
-		goType: field.Type,
-	}
-
-	for option := range strings.SplitSeq(options, ",") {
-		switch option {
-		case "":
-			// A tag without options yields one empty option.
-
-		case "omitempty", "omitzero":
-			parsed.optional = true
-
-		default:
-			return structField{}, false, fmt.Errorf("%w: json option %q", ErrUnsupportedType, option)
-		}
-	}
-
-	if err := parsed.applySchemaTag(field.Tag.Get("jsonschema")); err != nil {
-		return structField{}, false, err
-	}
-
-	return parsed, true, nil
-}
-
-func (f *structField) applySchemaTag(tag string) error {
-	for keyword := range strings.SplitSeq(tag, ",") {
-		keyword = strings.TrimSpace(keyword)
-
-		if description, ok := strings.CutPrefix(keyword, "description="); ok {
-			f.description = new(description)
-
-			continue
-		}
-
-		if values, ok := strings.CutPrefix(keyword, "enum="); ok {
-			if f.goType.Kind() != reflect.String {
-				return fmt.Errorf("%w: enum requires a string field", ErrUnsupportedType)
-			}
-
-			f.enum = strings.Split(values, "|")
-
-			continue
-		}
-
-		if keyword != "" {
-			return fmt.Errorf("%w: jsonschema keyword %q", ErrUnsupportedType, keyword)
-		}
-	}
-
-	return nil
 }

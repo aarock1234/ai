@@ -6,8 +6,20 @@ This is the state of the port against `ai@7.0.146` and `@ai-sdk/provider@4.0.31`
 
 - Phases A to E are complete. Every upstream package is ported, adapted, or recorded as not applicable to Go, with the gaps listed below.
 - The core module and the nested modules `otel/`, `codemode/`, `tui/`, `policyopawasm/` and `sandboxshell/` pass the static checks listed in the [code audit](code-audit.md).
-- The programs in `examples/` and the README use the current API, and the examples build. They have not been run.
-- Nothing has been run against live provider APIs, and no tests cover the rewritten code.
+- The programs in `examples/` and the README use the current API, and the examples build. Only `examples/openrouter` has been run; no tests cover the rewritten code.
+
+## Live runs
+
+`examples/openrouter` ran on 2026-11-17 against `anthropic/claude-opus-5.5` and `openai/gpt-6.1-terra` through OpenRouter, with data collection denied and usage accounting on. Every check passed on both models:
+
+- `GenerateText` with a system prompt.
+- `ObjectOutput` with nested objects and arrays, enums, a nullable pointer, an `omitempty` field, and `minLength`, `maxLength`, `minimum`, `minItems` and `maxItems`, all under strict structured output.
+- `ArrayOutput` with bounds, enums and nullable fields.
+- A `ToolLoopAgent` with two tools and `IsStepCount(5)`, which called both tools over two steps.
+- The cost of every step, read from `openrouter.ChatMetadata`.
+- A model ID that does not exist, which failed with a `*model.APICallError` (status 400, not retryable).
+
+The run led to two schema fixes in `internal/schema`. Optional fields of model-written values are now required and nullable, so the schemas are valid under the strict structured output that OpenAI-compatible providers use by default; tool outputs keep optional fields optional. The `jsonschema` tag's description may contain commas, and the tag supports `minLength`, `maxLength`, `minimum`, `maximum`, `minItems` and `maxItems`.
 
 ## Completed phases
 
@@ -33,5 +45,5 @@ These come from the Partial and Deferred rows of [feature parity](feature-parity
 - **License.** Done. The SDK is licensed under the Apache License 2.0, matching upstream (`LICENSE`, also copied into each nested module). `NOTICE` attributes the upstream and lists the embedded upstream files under `pkg/harness/*/assets` and `pkg/devtools/client`, which keep their Apache-2.0 `LICENSE` files.
 - **Tests.** The pre-rewrite `*_test.go` files were deleted at the owner's request, so the repository has no tests. `make check-static` is the verification until tests are added; `make test` and the CI test step pass with no test files.
 - **Nested modules.** `otel/`, `codemode/`, `tui/`, `policyopawasm/` and `sandboxshell/` require `github.com/aarock1234/ai v0.0.0` through a `replace ../` directive. Before release, each must require a tagged core version and drop the `replace`, and the modules must be tagged with their path prefix (for example `otel/v0.x.y`).
-- **Versioning.** The API breaks compatibility with v0.3.0. Tag a new minor version (v0.x) with the [migration guide](migration.md), and keep the CI and release tool pins aligned.
+- **Versioning.** The API breaks compatibility with v0.3.0, so the rewrite is tagged v0.4.0 with the [migration guide](migration.md). Keep the CI and release tool pins aligned for later tags.
 - **CI.** The `Makefile` builds, lints and format-checks all six modules (`MODULES := . otel codemode tui policyopawasm sandboxshell`). CI and the release workflow lint each module with `--tests=false` and run `make build`. `make test` and the CI test step cover only the root module.

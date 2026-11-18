@@ -68,14 +68,17 @@ func NewToolSchema[Input any]() (ToolSchema, error) {
 }
 
 // NewToolSchemaWithOutput returns a ToolSchema whose input and output
-// schemas are generated from Input and Output.
+// schemas are generated from Input and Output. The server writes the
+// output, so its omitempty fields may be left out.
 func NewToolSchemaWithOutput[Input, Output any]() (ToolSchema, error) {
 	toolSchema, err := NewToolSchema[Input]()
 	if err != nil {
 		return ToolSchema{}, err
 	}
 
-	outputSchema, err := schema.Generate[Output]()
+	outputSchema, err := schema.GenerateWithOptions[Output](schema.GenerateOptions{
+		Writer: schema.ProgramWriter,
+	})
 	if err != nil {
 		return ToolSchema{}, fmt.Errorf("generate tool output schema: %w", err)
 	}

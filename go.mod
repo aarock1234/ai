@@ -1,6 +1,6 @@
 module github.com/aarock1234/ai
 
-go 1.27.3
+go 1.27.0
 
 require github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 

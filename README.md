@@ -10,7 +10,7 @@ An idiomatic Go port of the [Vercel AI SDK](https://ai-sdk.dev) v7. One API for 
 go get github.com/aarock1234/ai
 ```
 
-Requires Go 1.27.3 or later.
+Requires Go 1.27 or later, the first release with generic methods. The nested modules require Go 1.27.3.
 
 ## Quick start
 
@@ -238,6 +238,23 @@ if err != nil {
 	return fmt.Errorf("read recipe: %w", err)
 }
 ```
+
+### Schemas from Go types
+
+Struct fields follow their `json` tags, and pointers are nullable. Schemas of values a model writes, such as outputs and tool inputs, are valid for strict structured output: every property is required, and a field tagged `omitempty` or `omitzero` accepts `null` instead of being left out. Decoding `null` leaves the zero value, as leaving the field out would. This is the Go form of upstream's advice to use `.nullable()` instead of `.optional()` with strict schemas.
+
+The `jsonschema` tag adds comma-separated keywords. A `description` comes last and runs to the end of the tag, so it may contain commas:
+
+```go
+type Draft struct {
+	Title  string   `json:"title" jsonschema:"minLength=1,maxLength=256,description=The title, in title case"`
+	Tone   string   `json:"tone" jsonschema:"enum=formal|casual"`
+	Rating int      `json:"rating" jsonschema:"minimum=1,maximum=5"`
+	Tags   []string `json:"tags,omitempty" jsonschema:"maxItems=10"`
+}
+```
+
+Providers that reject a keyword drop it or move it into the description, and the output is still validated against the full schema.
 
 `ArrayOutput[T]`, `ChoiceOutput` and `JSONOutput` cover arrays, enumerations and free-form JSON. When streaming, `PartialOutputStream` yields partial values as the JSON arrives and `ElementStream` yields each completed array element. Upstream's deprecated `generateObject` and `streamObject` are not ported; use `Output` instead.
 
