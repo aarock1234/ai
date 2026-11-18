@@ -1,11 +1,13 @@
-// Command decide classifies customer messages with Decide and OpenAI's
-// Decisions API: a choice question picks each message's kind, and a
-// boolean question estimates whether it asks for something new. It prints
-// each answer with its probabilities and the call's usage.
+// Command decide classifies customer messages with Decide: a choice
+// question picks each message's kind, and a boolean question estimates
+// whether it asks for something new. It prints each answer with its
+// probabilities and the call's usage. The model is OpenAI's Decisions API,
+// or any OpenRouter model with structured outputs, adapted by the SDK.
 //
 // Usage:
 //
-//	OPENAI_API_KEY=... go run ./examples/decide gpt-6-luna
+//	OPENAI_API_KEY=... go run ./examples/decide openai gpt-6-luna
+//	OPENROUTER_API_KEY=... go run ./examples/decide openrouter openai/gpt-6-luna
 package main
 
 import (
@@ -21,6 +23,7 @@ import (
 	"github.com/aarock1234/ai/pkg/ai"
 	"github.com/aarock1234/ai/pkg/model"
 	"github.com/aarock1234/ai/pkg/provider/openai"
+	"github.com/aarock1234/ai/pkg/provider/openrouter"
 )
 
 // messages are the customer messages to classify.
@@ -59,14 +62,17 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 {
-		return errors.New("name one OpenAI decision model, such as gpt-6-luna")
+	if len(os.Args) != 3 {
+		return errors.New("name a provider, openai or openrouter, and a model")
+	}
+
+	decisionModel, err := decisionProvider(os.Args[1]).DecisionModel(os.Args[2])
+	if err != nil {
+		return err
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-
-	decisionModel := openai.New().Decision(os.Args[1])
 
 	for _, message := range messages {
 		if err := classify(ctx, decisionModel, message); err != nil {
@@ -75,6 +81,15 @@ func run() error {
 	}
 
 	return nil
+}
+
+// decisionProvider returns the provider a command line names.
+func decisionProvider(name string) model.DecisionProvider {
+	if name == "openrouter" {
+		return openrouter.New()
+	}
+
+	return openai.New()
 }
 
 // classify asks both questions about one message and prints the answers.
@@ -117,8 +132,13 @@ func classify(ctx context.Context, decisionModel model.DecisionModel, message st
 	return nil
 }
 
-// probabilities lists a choice answer's distribution, most likely first.
+// probabilities lists a choice answer's distribution, most likely first,
+// or nothing when the model reported none.
 func probabilities(answer model.ChoiceAnswer) string {
+	if len(answer.Probabilities) == 0 {
+		return ""
+	}
+
 	names := make([]string, 0, len(answer.Probabilities))
 	for name := range answer.Probabilities {
 		names = append(names, name)
@@ -133,7 +153,7 @@ func probabilities(answer model.ChoiceAnswer) string {
 		listed = append(listed, fmt.Sprintf("%s %.2f", name, answer.Probabilities[name]))
 	}
 
-	return "(" + strings.Join(listed, ", ") + ")"
+	return " (" + strings.Join(listed, ", ") + ")"
 }
 
 // tokens reads as "input 120, output 4 tokens", with "?" for an unknown

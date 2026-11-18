@@ -19,7 +19,7 @@ This is the state of the port against `ai@7.0.146` and `@ai-sdk/provider@4.0.31`
 - The cost of every step, read from `openrouter.ChatMetadata`.
 - A model ID that does not exist, which failed with a `*model.APICallError` (status 400, not retryable).
 
-`examples/openrouter` also passed on `openai/gpt-6-luna`, and `examples/decide` ran `Decide` against OpenAI's Decisions API (`POST /v1/decisions`) with `gpt-6-luna`: a choice question and a boolean question per message, answered with full probability distributions and input-token usage.
+`examples/openrouter` also passed on `openai/gpt-6-luna`, and `examples/decide` ran `Decide` against OpenAI's Decisions API (`POST /v1/decisions`) with `gpt-6-luna`: a choice question and a boolean question per message, answered with full probability distributions and input-token usage. It also ran through OpenRouter's `Decision`, which adapts any structured-output chat model with the SDK's decision language model: the same labels, without a choice distribution.
 
 The OpenRouter run led to two schema fixes in `internal/schema`. Optional fields of model-written values are now required and nullable, so the schemas are valid under the strict structured output that OpenAI-compatible providers use by default; tool outputs keep optional fields optional. The `jsonschema` tag's description may contain commas, and the tag supports `minLength`, `maxLength`, `minimum`, `maximum`, `minItems` and `maxItems`.
 

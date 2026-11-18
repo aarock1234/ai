@@ -129,7 +129,7 @@ Every directory in upstream `packages/` has one row.
 | `xai` | Present | `pkg/provider/xai` | Responses with the server-side tools, Image (generate and edit), Speech, Transcription (file and `StreamTranscribe`), Files, Video (generation, edit, extension, reference-to-video), and the experimental Batch and Realtime models. |
 | `zai` | Present | `pkg/provider/zai` | OpenAI-compatible GLM chat. |
 
-Go-only provider: `pkg/provider/openrouter` (OpenRouter, built on `openaicompatible`, with reasoning details, usage accounting, routing and plugins). Upstream's equivalent is the community package `@openrouter/ai-sdk-provider`.
+Go-only provider: `pkg/provider/openrouter` (OpenRouter, built on `openaicompatible`, with reasoning details, usage accounting, routing and plugins, and an experimental `Decision` model adapted from its chat models). Upstream's equivalent is the community package `@openrouter/ai-sdk-provider`.
 
 Streaming transcription (`model.StreamingTranscriptionModel`) is implemented wherever the upstream transcription model has `doStream`: `openai` (realtime models), `azure`, `elevenlabs`, `cartesia`, `google`, `googlevertex`, `gateway` and `xai`.
 
