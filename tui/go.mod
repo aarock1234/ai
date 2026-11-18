@@ -1,9 +1,9 @@
 module github.com/aarock1234/ai/tui
 
-go 1.27.3
+go 1.27.0
 
 require (
-	github.com/aarock1234/ai v0.0.0
+	github.com/aarock1234/ai v0.4.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 )
@@ -28,5 +28,3 @@ require (
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
-
-replace github.com/aarock1234/ai => ../

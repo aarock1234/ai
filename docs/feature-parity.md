@@ -9,7 +9,7 @@ This SDK is a Go port of the Vercel AI SDK. This page maps every upstream packag
 | Core package | `ai@7.0.146` |
 | Provider contract | `@ai-sdk/provider@4.0.31` (v4 model specifications) |
 | Source commit | [`a1db2092f9cbdf20b35c7d374c79a0aeceefef2a`](https://github.com/vercel/ai/tree/a1db2092f9cbdf20b35c7d374c79a0aeceefef2a) |
-| Go modules | `github.com/aarock1234/ai` (core), plus the nested modules `github.com/aarock1234/ai/otel`, `github.com/aarock1234/ai/codemode` and `github.com/aarock1234/ai/tui`; the core needs Go `1.27.0` (generic methods), the nested modules `1.27.3` |
+| Go modules | `github.com/aarock1234/ai` (core), plus the nested modules `github.com/aarock1234/ai/otel`, `github.com/aarock1234/ai/codemode` and `github.com/aarock1234/ai/tui`; every module needs Go `1.27.0`, the first release with generic methods |
 
 Status values:
 

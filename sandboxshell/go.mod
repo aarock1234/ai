@@ -1,9 +1,9 @@
 module github.com/aarock1234/ai/sandboxshell
 
-go 1.27.3
+go 1.27.0
 
 require (
-	github.com/aarock1234/ai v0.0.0
+	github.com/aarock1234/ai v0.4.0
 	mvdan.cc/sh/v3 v3.14.1
 )
 
@@ -13,5 +13,3 @@ require (
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
-
-replace github.com/aarock1234/ai => ../

@@ -10,7 +10,7 @@ An idiomatic Go port of the [Vercel AI SDK](https://ai-sdk.dev) v7. One API for 
 go get github.com/aarock1234/ai
 ```
 
-Requires Go 1.27 or later, the first release with generic methods. The nested modules require Go 1.27.3.
+Requires Go 1.27 or later, the first release with generic methods.
 
 ## Quick start
 
