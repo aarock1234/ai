@@ -119,13 +119,17 @@ func checkMissingModel(ctx context.Context, languageModel model.LanguageModel) e
 // do not collect data.
 func routingOptions() model.ProviderOptions {
 	return model.ProviderOptions{
-		openrouter.Namespace: openrouter.ChatOptions{
-			Usage: &openrouter.UsageOptions{
-				Include: true,
-			},
-			Provider: &openrouter.ProviderRouting{
-				DataCollection: openrouter.DataCollectionDeny,
-			},
+		openrouter.Namespace: routingChatOptions(),
+	}
+}
+
+func routingChatOptions() openrouter.ChatOptions {
+	return openrouter.ChatOptions{
+		Usage: &openrouter.UsageOptions{
+			Include: true,
+		},
+		Provider: &openrouter.ProviderRouting{
+			DataCollection: openrouter.DataCollectionDeny,
 		},
 	}
 }

@@ -34,7 +34,42 @@ type ChatOptions struct {
 
 	// User identifies the end user, to help OpenRouter detect abuse.
 	User *string `json:"user,omitempty"`
+
+	// CacheControl turns on automatic prompt caching for models that need
+	// it, such as Anthropic's: the cache breakpoint moves to the end of the
+	// prompt as a conversation grows. Most other models cache on their own.
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
+
+	// SessionID keeps a conversation's requests on one upstream provider,
+	// so its prompt cache stays warm, and groups them in OpenRouter's logs.
+	// It holds at most 256 characters.
+	SessionID string `json:"session_id,omitempty"`
 }
+
+// CacheControl configures automatic prompt caching.
+type CacheControl struct {
+	// Type is CacheEphemeral, the only type.
+	Type string `json:"type"`
+
+	// TTL is how long the cache lives: CacheTTL5Minutes, the default, or
+	// CacheTTL1Hour, whose writes cost more.
+	TTL CacheTTL `json:"ttl,omitempty"`
+}
+
+// CacheEphemeral is the cache type.
+const CacheEphemeral = "ephemeral"
+
+// CacheTTL is how long a prompt cache lives.
+type CacheTTL string
+
+// Cache lifetimes.
+const (
+	CacheTTL5Minutes CacheTTL = "5m"
+	CacheTTL1Hour    CacheTTL = "1h"
+)
+
+// maxSessionID is the longest session ID OpenRouter accepts.
+const maxSessionID = 256
 
 // ReasoningEffort is an OpenRouter reasoning effort.
 type ReasoningEffort string
@@ -182,7 +217,30 @@ func (o ChatOptions) validate() error {
 		}
 	}
 
+	if o.CacheControl != nil {
+		if err := o.CacheControl.validate(); err != nil {
+			return err
+		}
+	}
+
+	if len(o.SessionID) > maxSessionID {
+		return fmt.Errorf("%w: openrouter session_id holds at most %d characters", model.ErrInvalidArgument, maxSessionID)
+	}
+
 	return nil
+}
+
+func (c CacheControl) validate() error {
+	if c.Type != CacheEphemeral {
+		return fmt.Errorf("%w: openrouter cache_control type %q", model.ErrInvalidArgument, c.Type)
+	}
+
+	switch c.TTL {
+	case "", CacheTTL5Minutes, CacheTTL1Hour:
+		return nil
+	default:
+		return fmt.Errorf("%w: openrouter cache_control ttl %q", model.ErrInvalidArgument, c.TTL)
+	}
 }
 
 func (o ReasoningOptions) validate() error {

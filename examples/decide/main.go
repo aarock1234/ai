@@ -1,13 +1,13 @@
 // Command decide classifies customer messages with Decide: a choice
 // question picks each message's kind, and a boolean question estimates
 // whether it asks for something new. It prints each answer with its
-// probabilities and the call's usage. The model is OpenAI's Decisions API,
-// or any OpenRouter model with structured outputs, adapted by the SDK.
+// probabilities and the call's usage. The model is OpenAI's Decisions API
+// or a model of OpenRouter's, such as ScaleDown Classify.
 //
 // Usage:
 //
 //	OPENAI_API_KEY=... go run ./examples/decide openai gpt-6-luna
-//	OPENROUTER_API_KEY=... go run ./examples/decide openrouter openai/gpt-6-luna
+//	OPENROUTER_API_KEY=... go run ./examples/decide openrouter scaledown/classify-1
 package main
 
 import (
@@ -127,7 +127,7 @@ func classify(ctx context.Context, decisionModel model.DecisionModel, message st
 		return fmt.Errorf("decide %q: the new answer is %T", message, result.Answers["new"])
 	}
 
-	fmt.Printf("%q\n  kind %s %s, asks for something new %.2f, %s\n", message, kind.Choice, probabilities(kind), isNew.Probability, tokens(result.Usage))
+	fmt.Printf("%q\n  kind %s%s, asks for something new %.2f, %s\n", message, kind.Choice, probabilities(kind), isNew.Probability, tokens(result.Usage))
 
 	return nil
 }

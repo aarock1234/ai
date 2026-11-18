@@ -35,6 +35,10 @@ var checks = []check{
 		name: "agent",
 		run:  checkAgent,
 	},
+	{
+		name: "prompt cache",
+		run:  checkCache,
+	},
 }
 
 func checkText(ctx context.Context, languageModel model.LanguageModel) (string, error) {
