@@ -177,9 +177,11 @@ func (c *apiClient) getSession(ctx context.Context, sessionID string) (sessionMe
 
 // stopSession stops a session.
 func (c *apiClient) stopSession(ctx context.Context, sessionID string) error {
+	// The endpoint refuses a request without a JSON body with status 415.
 	return c.doJSON(ctx, apiRequest{
 		method: http.MethodPost,
 		path:   sessionPath(sessionID, "/stop"),
+		body:   struct{}{},
 	}, nil)
 }
 
