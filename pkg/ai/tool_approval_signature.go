@@ -7,7 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -133,8 +135,9 @@ func canonicalDigest(document json.RawMessage) (string, error) {
 
 // canonicalJSON encodes a JSON document with sorted object keys, so that
 // equal values produce equal bytes regardless of key order or formatting.
-// Numbers keep their exact token, so integers beyond float64 precision stay
-// distinct. Empty input encodes as null.
+// Numbers are encoded as JavaScript prints them, except integers beyond
+// float64 precision and numbers outside the float64 range, which keep their
+// exact token. Empty input encodes as null.
 func canonicalJSON(document json.RawMessage) ([]byte, error) {
 	var value any
 	if len(bytes.TrimSpace(document)) > 0 {
@@ -198,6 +201,16 @@ func writeCanonicalJSON(buffer *bytes.Buffer, value any) error {
 		buffer.WriteByte(']')
 
 		return nil
+
+	case json.Number:
+		encoded, err := canonicalNumber(typed)
+		if err != nil {
+			return err
+		}
+
+		buffer.Write(encoded)
+
+		return nil
 	}
 
 	encoded, err := encodeJSONWithoutHTMLEscaping(value)
@@ -208,6 +221,40 @@ func writeCanonicalJSON(buffer *bytes.Buffer, value any) error {
 	buffer.Write(encoded)
 
 	return nil
+}
+
+// maxExactInteger is the largest magnitude at which every integer is a
+// float64, 2^53.
+const maxExactInteger = 1 << 53
+
+// canonicalNumber encodes a number the way JavaScript's JSON.stringify
+// prints the parsed value, so that 10.0, 1e1 and 10 are equal, as they are
+// upstream. An integer literal beyond float64 precision, or a number outside
+// the float64 range, keeps its exact token: a Go tool decodes the raw input,
+// so two such integers must not share a digest.
+func canonicalNumber(number json.Number) ([]byte, error) {
+	token := number.String()
+
+	value, err := strconv.ParseFloat(token, 64)
+	if err != nil {
+		return []byte(token), nil
+	}
+
+	if isIntegerLiteral(token) && math.Abs(value) > maxExactInteger {
+		return []byte(token), nil
+	}
+
+	if value == 0 {
+		return []byte("0"), nil
+	}
+
+	return encodeJSONWithoutHTMLEscaping(value)
+}
+
+// isIntegerLiteral reports whether a JSON number has no fraction and no
+// exponent.
+func isIntegerLiteral(token string) bool {
+	return !strings.ContainsAny(token, ".eE")
 }
 
 // encodeJSONWithoutHTMLEscaping encodes like JavaScript's JSON.stringify,
