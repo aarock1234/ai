@@ -8,6 +8,6 @@
 - Never add, write, run, propose, or plan tests without an explicit request. `make check-static` builds, lints production code, and checks formatting; `make check` also runs tests and rewrites formatting.
 - Prioritize coding in large, coherent batches. Do not repeat builds, lint, vet, module verification or cross-compilation after small edits or every iteration. Run relevant checks once when a substantial finishing task is ready; reserve full multi-platform checks for major phase completion/release, or a concrete platform-specific change.
 - Use authorized subagents for independent implementation, with coordinator integration/review. Keep commentary, documentation updates and goal checkpoints concise; report pending verification honestly rather than running checks merely to produce a progress update.
-- `make lint` and `make format-check` use the pinned Golangci-lint version in `Makefile`; keep CI and release pins aligned. Do not use automatic source fixes during an audit.
+- `make lint` and `make format-check` use the pinned Golangci-lint version in `Makefile`; CI and the release workflow run the Makefile targets, so the `Makefile` holds the only pin. Do not use automatic source fixes during an audit.
 - Read `docs/feature-parity.md` and `docs/roadmap.md` before parity work. Implement features against the pinned upstream evidence, not historical unchecked plans or remembered TypeScript APIs.
 - Preserve pre-existing changes. Keep logs lowercase except proper nouns, and keep prompt instructions in dedicated Markdown files when authoring or revising them.

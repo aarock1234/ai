@@ -6,73 +6,23 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  verify:
+    name: Verify
+    uses: ./.github/workflows/ci.yaml
+
   release:
     name: Publish GitHub release
+    needs: verify
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-
-      - name: Lint OpenTelemetry module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: otel
-
-      - name: Lint code mode module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: codemode
-
-      - name: Lint terminal UI module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: tui
-
-      - name: Lint OPA WebAssembly module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: policyopawasm
-
-      - name: Lint in-memory shell sandbox module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: sandboxshell
-
-      - name: Build
-        run: make build
-
-      - name: Test
-        run: make test
-
-      - name: Vet
-        run: go vet ./...
-
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           generate_release_notes: true

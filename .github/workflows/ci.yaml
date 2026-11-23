@@ -5,60 +5,26 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
+      - name: Join the modules in a workspace
+        run: make workspace
 
-      - name: Lint OpenTelemetry module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: otel
-
-      - name: Lint code mode module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: codemode
-
-      - name: Lint terminal UI module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: tui
-
-      - name: Lint OPA WebAssembly module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: policyopawasm
-
-      - name: Lint in-memory shell sandbox module
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --tests=false
-          working-directory: sandboxshell
-
-      - name: Build
-        run: make build
+      - name: Build, lint and check formatting
+        run: make check-static
 
       - name: Test
         run: make test

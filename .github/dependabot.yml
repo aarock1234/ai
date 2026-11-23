@@ -1,0 +1,39 @@
+# The gomod directories mirror MODULES in the Makefile. Dependabot cannot read
+# the Makefile: add an entry here when a module is added there.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /otel
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /codemode
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /tui
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /policyopawasm
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /sandboxshell
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
