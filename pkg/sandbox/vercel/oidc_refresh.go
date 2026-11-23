@@ -22,7 +22,7 @@ import (
 const oidcTokenEndpoint = "https://api.vercel.com/v1/projects/"
 
 // vercelIDPattern matches team and project IDs, which are passed to the
-// Vercel CLI.
+// Vercel CLI. A project ID also names its file in the OIDC token cache.
 var vercelIDPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]*$`)
 
 // oidcRefresh describes one token refresh.
