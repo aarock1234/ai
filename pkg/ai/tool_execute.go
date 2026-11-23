@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/aarock1234/ai/pkg/model"
@@ -217,8 +218,19 @@ type ExecuteToolOptions struct {
 // ExecuteTool runs a tool's Execute function outside a generation, such as
 // in an agent runtime that executes tools on the host, and returns its final
 // output. It is the Go form of upstream's executeTool: preliminary outputs
-// go to OnPreliminary instead of a stream of parts.
-func ExecuteTool(ctx context.Context, options ExecuteToolOptions) (any, error) {
+// go to OnPreliminary instead of a stream of parts. A panic in Execute is
+// returned as a *ToolPanicError.
+func ExecuteTool(ctx context.Context, options ExecuteToolOptions) (output any, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			output = nil
+			err = &ToolPanicError{
+				Value: recovered,
+				Stack: debug.Stack(),
+			}
+		}
+	}()
+
 	if options.Tool.err != nil {
 		return nil, options.Tool.err
 	}

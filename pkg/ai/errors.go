@@ -163,6 +163,29 @@ func (e *ToolCallRepairError) Unwrap() []error {
 	return nonNilErrors(e.Cause, e.OriginalError)
 }
 
+// ToolPanicError reports a tool whose Execute function panicked. The
+// generation continues: the panic is reported as the tool's error, as
+// upstream reports any exception a tool throws.
+type ToolPanicError struct {
+	// Value is the value passed to panic.
+	Value any
+
+	// Stack is the stack of the panicking goroutine.
+	Stack []byte
+}
+
+// Error returns the panic value.
+func (e *ToolPanicError) Error() string {
+	return fmt.Sprintf("tool panicked: %v", e.Value)
+}
+
+// Unwrap returns the panic value when it is an error.
+func (e *ToolPanicError) Unwrap() error {
+	err, _ := e.Value.(error)
+
+	return err
+}
+
 // ToolChoiceViolationError reports a response that does not satisfy a
 // required tool choice.
 type ToolChoiceViolationError struct {
