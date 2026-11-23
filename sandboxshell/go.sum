@@ -1,5 +1,5 @@
-github.com/aarock1234/ai v0.4.0 h1:0d+zWKJeGSbTU7LaRW2Kfb+IbkKepmBkIVRLxbWMsu8=
-github.com/aarock1234/ai v0.4.0/go.mod h1:jD0HjUdUiUzBSURkEhjpBBcQ4tn7NPbJNDaNmrejyVs=
+github.com/aarock1234/ai v0.6.1 h1:2K0jDR1y1uhCGTXFq72gaPS+EzzTxiRIEPL3sXRY6mI=
+github.com/aarock1234/ai v0.6.1/go.mod h1:jD0HjUdUiUzBSURkEhjpBBcQ4tn7NPbJNDaNmrejyVs=
 github.com/creack/pty v1.1.24 h1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=
 github.com/creack/pty v1.1.24/go.mod h1:08sCNb52WyoAwi2QDyzUCTgcvVFhUzewun7wtTfvcwE=
 github.com/dlclark/regexp2 v1.11.0 h1:G/nrcoOa7ZXlpoa/91N3X7mM3r8eIlMBBJZvsz/mxKI=
