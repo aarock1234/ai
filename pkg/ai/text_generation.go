@@ -90,6 +90,7 @@ type textGeneration struct {
 
 	resolvedToolCallers resolvedToolCallers
 	toolSearch          *toolSearchState
+	toolInputValidators *toolInputValidators
 	telemetryDispatcher telemetryDispatcher
 }
 
@@ -138,6 +139,7 @@ func newTextGeneration(config textGenerationConfig) (*textGeneration, error) {
 		responseFormat:       responseFormat,
 		resolvedToolCallers:  toolCallers,
 		toolSearch:           toolSearch,
+		toolInputValidators:  newToolInputValidators(),
 		telemetryDispatcher:  newTelemetryDispatcher(config.telemetry),
 	}, nil
 }
@@ -439,6 +441,7 @@ func (g *textGeneration) languageModelCall(step preparedStep, collectContent boo
 		tools:          step.modelTools,
 		repair:         g.repairToolCall,
 		refine:         g.refineToolInput,
+		validators:     g.toolInputValidators,
 		collectContent: collectContent,
 		telemetry:      g.telemetryDispatcher,
 		onStart:        g.onLanguageModelCallStart,
@@ -616,6 +619,7 @@ func (g *textGeneration) resolveInitialApprovals(ctx context.Context) (initialAp
 		messages:      g.initialPrompt.messages,
 		secret:        g.toolApprovalSecret,
 		refine:        g.refineToolInput,
+		validators:    g.toolInputValidators,
 	})
 	if err != nil {
 		return initialApprovals{}, err

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/aarock1234/ai/internal/schema"
 	"github.com/aarock1234/ai/pkg/model"
@@ -58,6 +59,9 @@ type toolCallParseRequest struct {
 	repair ToolCallRepairFunc
 	refine map[string]ToolInputRefinement
 
+	// validators caches the compiled input schemas; nil compiles per call.
+	validators *toolInputValidators
+
 	// system and messages describe the step for the repair function.
 	system   string
 	messages []model.Message
@@ -91,7 +95,7 @@ func parseOrRepairToolCall(ctx context.Context, request toolCallParseRequest) (T
 	}
 
 	parse := refineToolCallInput(ctx, request.refine, func(call model.ToolCall) (ToolCall, error) {
-		return parseDeclaredToolCall(call, request.tools)
+		return parseDeclaredToolCall(call, request.tools, request.validators)
 	})
 
 	parsed, err := parse(request.call)
@@ -173,7 +177,7 @@ func applyToolInputRefinement(ctx context.Context, refine map[string]ToolInputRe
 
 // parseDeclaredToolCall validates a call of one of the declared tools.
 // Provider-executed dynamic calls of undeclared tools are accepted as is.
-func parseDeclaredToolCall(call model.ToolCall, tools []Tool) (ToolCall, error) {
+func parseDeclaredToolCall(call model.ToolCall, tools []Tool, validators *toolInputValidators) (ToolCall, error) {
 	tool, found := findTool(tools, call.ToolName)
 	if !found {
 		if isProviderExecutedDynamicCall(call) {
@@ -186,7 +190,7 @@ func parseDeclaredToolCall(call model.ToolCall, tools []Tool) (ToolCall, error) 
 		}
 	}
 
-	input, err := validateToolInput(tool, call.Input)
+	input, err := validateToolInput(validators, tool, call.Input)
 	if err != nil {
 		return ToolCall{}, &InvalidToolInputError{
 			ToolName:  call.ToolName,
@@ -210,7 +214,7 @@ func parseDeclaredToolCall(call model.ToolCall, tools []Tool) (ToolCall, error) 
 // validateToolInput checks the input against the tool's schema. Empty input,
 // which many models produce for tools without parameters, is validated and
 // returned as an empty object.
-func validateToolInput(tool Tool, input string) (json.RawMessage, error) {
+func validateToolInput(validators *toolInputValidators, tool Tool, input string) (json.RawMessage, error) {
 	raw := json.RawMessage(strings.TrimSpace(input))
 	if len(raw) == 0 {
 		raw = json.RawMessage(`{}`)
@@ -220,7 +224,7 @@ func validateToolInput(tool Tool, input string) (json.RawMessage, error) {
 		return nil, errors.New("input is not valid JSON")
 	}
 
-	validator, err := schema.Compile(tool.InputSchema)
+	validator, err := validators.validator(tool.InputSchema)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +234,45 @@ func validateToolInput(tool Tool, input string) (json.RawMessage, error) {
 	}
 
 	return raw, nil
+}
+
+// toolInputValidators compiles each tool input schema once for a
+// generation. Schemas are keyed by their bytes, because the tools of a
+// generation can change between steps. A nil cache compiles on every call.
+type toolInputValidators struct {
+	mu       sync.Mutex
+	compiled map[string]*schema.Validator
+}
+
+// newToolInputValidators returns an empty cache.
+func newToolInputValidators() *toolInputValidators {
+	return &toolInputValidators{
+		compiled: make(map[string]*schema.Validator),
+	}
+}
+
+// validator returns the compiled form of an input schema.
+func (v *toolInputValidators) validator(inputSchema json.RawMessage) (*schema.Validator, error) {
+	if v == nil {
+		return schema.Compile(inputSchema)
+	}
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	key := string(inputSchema)
+	if validator, cached := v.compiled[key]; cached {
+		return validator, nil
+	}
+
+	validator, err := schema.Compile(inputSchema)
+	if err != nil {
+		return nil, err
+	}
+
+	v.compiled[key] = validator
+
+	return validator, nil
 }
 
 // parseProviderExecutedDynamicCall accepts any JSON input for a dynamic tool

@@ -580,12 +580,13 @@ func (r *generateTextRun) parseToolCalls(ctx context.Context, prepared preparedS
 		}
 
 		parsed, err := parseToolCall(ctx, toolCallParseRequest{
-			call:     call,
-			tools:    prepared.modelTools,
-			repair:   r.repairToolCall,
-			refine:   r.refineToolInput,
-			system:   prepared.system,
-			messages: prepared.messages,
+			call:       call,
+			tools:      prepared.modelTools,
+			repair:     r.repairToolCall,
+			refine:     r.refineToolInput,
+			validators: r.toolInputValidators,
+			system:     prepared.system,
+			messages:   prepared.messages,
 		})
 		if err != nil {
 			return nil, err

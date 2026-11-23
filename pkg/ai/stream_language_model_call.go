@@ -254,6 +254,9 @@ type languageModelCall struct {
 	repair ToolCallRepairFunc
 	refine map[string]ToolInputRefinement
 
+	// validators caches the compiled input schemas; nil compiles per call.
+	validators *toolInputValidators
+
 	// collectContent records the call's content for the end event and for
 	// tool choice errors.
 	collectContent bool
@@ -566,12 +569,13 @@ func (c *modelCallConversion) convertToolInputStart(part model.ToolInputStart) T
 // the ToolError that reports them to the model.
 func (c *modelCallConversion) convertToolCall(ctx context.Context, part model.ToolCall, yield func(LanguageModelStreamPart) bool) bool {
 	call, err := parseToolCall(ctx, toolCallParseRequest{
-		call:     part,
-		tools:    c.call.tools,
-		repair:   c.call.repair,
-		refine:   c.call.refine,
-		system:   c.call.start.System,
-		messages: c.call.start.Messages,
+		call:       part,
+		tools:      c.call.tools,
+		repair:     c.call.repair,
+		refine:     c.call.refine,
+		validators: c.call.validators,
+		system:     c.call.start.System,
+		messages:   c.call.start.Messages,
 	})
 	if err != nil {
 		return yield(ErrorPart{

@@ -379,6 +379,9 @@ type approvalValidation struct {
 	messages      []model.Message
 	secret        []byte
 	refine        map[string]ToolInputRefinement
+
+	// validators caches the compiled input schemas; nil compiles per call.
+	validators *toolInputValidators
 }
 
 // validateApprovedToolApprovals revalidates approved calls before they run:
@@ -479,7 +482,7 @@ func revalidateApprovedInput(ctx context.Context, validation approvalValidation,
 		schemaInput = approval.request.InputSchemaInput
 	}
 
-	input, err := validateToolInput(tool, string(schemaInput))
+	input, err := validateToolInput(validation.validators, tool, string(schemaInput))
 	if err != nil {
 		return err
 	}
