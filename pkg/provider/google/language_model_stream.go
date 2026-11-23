@@ -214,8 +214,8 @@ func (s *streamSession) continueStream() error {
 }
 
 func (s *streamSession) readError(err error) error {
-	if ctxErr := s.ctx.Err(); ctxErr != nil {
-		return ctxErr
+	if s.ctx.Err() != nil {
+		return context.Cause(s.ctx)
 	}
 
 	return fmt.Errorf("read stream: %w", err)

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/aarock1234/ai/pkg/model"
@@ -12,6 +13,10 @@ const (
 	contentToolApprovalRequest = "tool-approval-request"
 	contentSource              = "source"
 )
+
+// errUnknownPartType reports a content or stream part whose type this
+// version does not know.
+var errUnknownPartType = errors.New("unknown part type")
 
 type wireText struct {
 	Text             string         `json:"text"`
@@ -206,7 +211,7 @@ func decodeSharedContent(contentType string, raw json.RawMessage) (sharedContent
 	case partToolResult:
 		return asShared(decodeWith(raw, wireToolResult.content))
 	default:
-		return nil, fmt.Errorf("%w: unknown content type %q", model.ErrInvalidResponse, contentType)
+		return nil, fmt.Errorf("%w: %w %q", model.ErrInvalidResponse, errUnknownPartType, contentType)
 	}
 }
 

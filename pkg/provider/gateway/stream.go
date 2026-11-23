@@ -37,6 +37,10 @@ const doneMarker = "[DONE]"
 // errStreamFailed reports an error part sent by the gateway.
 var errStreamFailed = errors.New("gateway stream failed")
 
+// errMalformedStreamEvent reports an event that is not a typed JSON part.
+// It ends the stream, as upstream ends it on unparsable event data.
+var errMalformedStreamEvent = errors.New("malformed stream event")
+
 type wireBlock struct {
 	ID               string       `json:"id"`
 	ProviderMetadata wireMetadata `json:"providerMetadata"`
@@ -94,7 +98,9 @@ type errorMessage struct {
 
 // streamParts reads the gateway's event stream. Each event holds one stream
 // part in the specification's JSON form. Raw parts are dropped unless the
-// call asked for them.
+// call asked for them. A part of an unknown type is skipped, a known part
+// that fails conversion is reported and skipped, and an event that is not a
+// typed JSON part is reported and ends the stream.
 func streamParts(ctx context.Context, body io.Reader, includeRawChunks bool) iter.Seq[model.StreamPart] {
 	return func(yield func(model.StreamPart) bool) {
 		for event, err := range sse.Read(body) {
@@ -111,12 +117,29 @@ func streamParts(ctx context.Context, body io.Reader, includeRawChunks bool) ite
 			}
 
 			part, err := decodeStreamPart(json.RawMessage(event.Data))
-			if err != nil {
+
+			switch {
+			case errors.Is(err, errUnknownPartType):
+				// A newer gateway may send part types this version does not
+				// know. Upstream forwards them untyped; here they are skipped
+				// so the stream still reaches its finish part.
+				continue
+
+			case errors.Is(err, errMalformedStreamEvent):
 				yield(model.StreamError{
 					Err: err,
 				})
 
 				return
+
+			case err != nil:
+				if !yield(model.StreamError{
+					Err: err,
+				}) {
+					return
+				}
+
+				continue
 			}
 
 			if _, isRaw := part.(model.Raw); isRaw && !includeRawChunks {
@@ -130,10 +153,10 @@ func streamParts(ctx context.Context, body io.Reader, includeRawChunks bool) ite
 	}
 }
 
-// readError reports the context error when ctx ended the read.
+// readError reports the context's cause when ctx ended the read.
 func readError(ctx context.Context, err error) error {
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
 	}
 
 	return fmt.Errorf("read stream: %w", err)
@@ -143,7 +166,7 @@ func readError(ctx context.Context, err error) error {
 func decodeStreamPart(raw json.RawMessage) (model.StreamPart, error) {
 	header, err := decodeAs[typeHeader](raw)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errMalformedStreamEvent, err)
 	}
 
 	switch header.Type {
