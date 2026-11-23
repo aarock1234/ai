@@ -3,7 +3,7 @@ module github.com/aarock1234/ai/tui
 go 1.27.0
 
 require (
-	github.com/aarock1234/ai v0.4.0
+	github.com/aarock1234/ai v0.6.1
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 )
