@@ -1,6 +1,6 @@
 # Roadmap
 
-This is the state of the port against `ai@7.0.146` and `@ai-sdk/provider@4.0.31`, and the work that remains. The rewrite shipped as `v0.4.0` and the current release is `v0.6.1`; see the [changelog](../CHANGELOG.md). Statuses and Go locations are in [feature parity](feature-parity.md). Work follows the pinned upstream source, not older plans.
+This is the state of the port against `ai@7.0.146` and `@ai-sdk/provider@4.0.31`, and the work that remains. The rewrite shipped as `v0.4.0` and the current release is `v0.7.0`; see the [changelog](../CHANGELOG.md). Statuses and Go locations are in [feature parity](feature-parity.md). Work follows the pinned upstream source, not older plans.
 
 ## Current state
 
