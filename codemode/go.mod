@@ -6,7 +6,7 @@ require (
 	github.com/aarock1234/ai v0.4.0
 	github.com/dop251/goja v0.0.0-20261021103412-e94c2247d6eb
 	github.com/evanw/esbuild v0.28.2
-	golang.org/x/text v0.43.0
+	golang.org/x/text v0.44.0
 )
 
 require (
