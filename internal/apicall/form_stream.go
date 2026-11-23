@@ -50,7 +50,7 @@ func PostFormStream(ctx context.Context, request Request, fields []FormField, fi
 		return nil, err
 	}
 
-	return readResponse(response, nil)
+	return readResponse(ctx, request.URL, response, nil)
 }
 
 // writeStreamedForm encodes the fields and the streamed file, then closes

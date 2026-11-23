@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -63,7 +62,7 @@ func PostJSON(ctx context.Context, request Request, body any) (*Response, error)
 		return nil, err
 	}
 
-	return readResponse(response, encoded)
+	return readResponse(ctx, request.URL, response, encoded)
 }
 
 // PostJSONStream sends body as JSON and returns the open response body.
@@ -93,7 +92,7 @@ func PostBody(ctx context.Context, request Request, body []byte, contentType str
 		return nil, err
 	}
 
-	return readResponse(response, body)
+	return readResponse(ctx, request.URL, response, body)
 }
 
 // Get fetches a resource and buffers the successful response.
@@ -103,7 +102,7 @@ func Get(ctx context.Context, request Request) (*Response, error) {
 		return nil, err
 	}
 
-	return readResponse(response, nil)
+	return readResponse(ctx, request.URL, response, nil)
 }
 
 // GetStream fetches a resource and returns the open successful response
@@ -127,7 +126,7 @@ func Delete(ctx context.Context, request Request) (*Response, error) {
 		return nil, err
 	}
 
-	return readResponse(response, nil)
+	return readResponse(ctx, request.URL, response, nil)
 }
 
 // DecodeJSON decodes a provider response body into target.
@@ -191,12 +190,12 @@ func do(request Request, httpRequest *http.Request) (*http.Response, error) {
 	return response, nil
 }
 
-func readResponse(response *http.Response, requestBody []byte) (*Response, error) {
+func readResponse(ctx context.Context, url string, response *http.Response, requestBody []byte) (*Response, error) {
 	defer closeBody(response.Body)
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
+		return nil, transportError(ctx, url, err)
 	}
 
 	if len(body) > maxResponseBytes {
@@ -216,20 +215,20 @@ func closeBody(body io.Closer) {
 	_ = body.Close()
 }
 
+// transportError reports a request that failed before a response arrived or
+// while its body was read. Cancellation is returned as the context's cause.
+// Every other transport failure is retryable, as upstream retries any failed
+// fetch: refused and reset connections, timeouts, DNS failures and
+// truncated bodies.
 func transportError(ctx context.Context, url string, err error) error {
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
 	}
 
-	var timeout interface {
-		Timeout() bool
-	}
-	retryable := errors.As(err, &timeout) && timeout.Timeout()
-
 	return &model.APICallError{
 		Message:     "provider request failed",
 		URL:         url,
-		IsRetryable: retryable,
+		IsRetryable: true,
 		Cause:       err,
 	}
 }

@@ -37,7 +37,7 @@ func PostForm(ctx context.Context, request Request, fields []FormField) (*Respon
 		return nil, err
 	}
 
-	return readResponse(response, nil)
+	return readResponse(ctx, request.URL, response, nil)
 }
 
 func encodeForm(fields []FormField) ([]byte, string, error) {
