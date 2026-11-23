@@ -565,7 +565,7 @@ Model calls are retried twice by default; set `MaxRetries` to change that.
 | Package | Contents |
 | --- | --- |
 | `pkg/mcp` | Model Context Protocol client: server tools as `[]ai.Tool`, resources, prompts, elicitation, Streamable HTTP, SSE and stdio transports, OAuth |
-| `pkg/harness` | Drives coding-agent runtimes inside a sandbox. Adapters: `harness/acp`, `claudecode`, `codex`, `cursor`, `deepagents`, `fx`, `githubcopilot`, `grokbuild` and `opencode` |
+| `pkg/harness` | Drives coding-agent runtimes inside a sandbox. Adapters: `harness/acp`, `claudecode`, `codex`, `cursor`, `deepagents`, `fx`, `githubcopilot`, `grokbuild`, `opencode` and `pi` |
 | `pkg/sandbox` | Sandbox session contract, with `sandbox/vercel` (Vercel Sandbox microVMs) and `sandbox/local` (a local shell that is **not isolated**); the `sandboxshell` module adds an isolated in-memory bash sandbox |
 | `pkg/tools/bash` | A bash tool that runs commands in any sandbox session |
 | `pkg/devtools` | Records calls for local debugging; `go run github.com/aarock1234/ai/pkg/devtools/cmd/devtools` serves the viewer |
@@ -668,6 +668,8 @@ The API follows the TypeScript SDK closely, with these deliberate differences:
 | [transcribe](examples/transcribe)                   | Speech to text                                  |
 | [chat-server](examples/chat-server)                 | Streaming to `useChat` from a `net/http` server |
 | [mcp](examples/mcp)                                 | Listing an MCP server's tools over stdio        |
+| [decide](examples/decide)                           | Decisions with full probability distributions   |
+| [openrouter](examples/openrouter)                   | Live checks through OpenRouter                  |
 
 Run an example with `go run ./examples/<name>` after setting the provider's API key.
 

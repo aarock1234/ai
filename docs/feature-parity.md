@@ -1,6 +1,6 @@
 # Feature parity
 
-This SDK is a Go port of the Vercel AI SDK. This page maps every upstream package and module to its Go location and status. It is based on the current source and records what the code does, not runtime conformance: nothing has been checked against live providers or a test suite.
+This SDK is a Go port of the Vercel AI SDK. This page maps every upstream package and module to its Go location and status. It is based on the current source and records what the code does, not runtime conformance: only the runs listed under "Live runs" in the [roadmap](roadmap.md#live-runs) have been checked against live providers, and there is no test suite.
 
 ## Pinned baseline
 
@@ -9,7 +9,7 @@ This SDK is a Go port of the Vercel AI SDK. This page maps every upstream packag
 | Core package | `ai@7.0.146` |
 | Provider contract | `@ai-sdk/provider@4.0.31` (v4 model specifications) |
 | Source commit | [`a1db2092f9cbdf20b35c7d374c79a0aeceefef2a`](https://github.com/vercel/ai/tree/a1db2092f9cbdf20b35c7d374c79a0aeceefef2a) |
-| Go modules | `github.com/aarock1234/ai` (core), plus the nested modules `github.com/aarock1234/ai/otel`, `github.com/aarock1234/ai/codemode` and `github.com/aarock1234/ai/tui`; every module needs Go `1.27.0`, the first release with generic methods |
+| Go modules | `github.com/aarock1234/ai` (core), plus the nested modules `github.com/aarock1234/ai/otel`, `github.com/aarock1234/ai/codemode`, `github.com/aarock1234/ai/tui`, `github.com/aarock1234/ai/policyopawasm` and `github.com/aarock1234/ai/sandboxshell`; every module needs Go `1.27.0`, the first release with generic methods |
 
 Status values:
 
@@ -17,6 +17,7 @@ Status values:
 - **Partial**: part of it is ported. The missing pieces are listed.
 - **Not applicable**: there is no Go equivalent, and none is planned. The reason is given.
 - **Deferred**: not ported yet, pending an owner decision. See the [roadmap](roadmap.md).
+- **Blocked**: cannot be ported until something outside this repository changes. The row says what.
 
 ## Go adaptations
 
@@ -37,7 +38,7 @@ These are deliberate differences from the TypeScript API. They are not gaps.
 - **One contract version.** Only v4 models exist, so there are no v2/v3 adapters.
 - **Optional capabilities are optional interfaces.** Files, skills, batch, video, decision, realtime and speech translation support is detected with interfaces such as `model.FilesProvider` and `model.VideoOperator`, so providers without them are unaffected.
 - **No global state.** There is no global default provider, no string model IDs outside a `Registry`, no default provider instances (such as upstream's `openai` or `claudeCode` exports; call `New`), no user-agent suffix, no telemetry registry and no default warning logger. Telemetry integrations and the warning logger (`LogWarnings`, for example `ai.SlogWarnings`) are per-call options. Warnings are always returned on results.
-- **Nested modules isolate dependencies.** `otel/` (OpenTelemetry), `codemode/` (the goja JavaScript interpreter and the esbuild TypeScript transformer) and `tui/` (Bubble Tea and Lip Gloss) are separate modules, so the core module depends only on a JSON Schema validator.
+- **Nested modules isolate dependencies.** `otel/` (OpenTelemetry), `codemode/` (the goja JavaScript interpreter and the esbuild TypeScript transformer), `tui/` (Bubble Tea and Lip Gloss), `policyopawasm/` (the wazero WebAssembly runtime and a YAML library) and `sandboxshell/` (the `mvdan.cc/sh` shell interpreter) are separate modules, so the core module depends only on a JSON Schema validator and `golang.org/x/text`.
 
 ## Upstream packages
 

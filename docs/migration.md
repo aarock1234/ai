@@ -51,7 +51,7 @@ reranker := cohere.New().Reranking("rerank-v3.5")
 Notes:
 
 - `openai.Provider.Chat` uses Chat Completions, as `openai.Chat` did. `openai.Provider.LanguageModel` returns the Responses model, which is upstream's default.
-- API keys and base URLs fall back to environment variables when a request is sent, not when the provider is created.
+- API keys fall back to environment variables when a request is sent; base URLs are read from the environment when the provider is created.
 - Changed options: Anthropic `WithAPIVersion` was removed and `WithAuthToken` added. OpenRouter `WithHTTPReferer` and `WithSiteURL` became `WithAppURL` and `WithAppName`. All providers gained `WithHeaders`.
 - Model methods per provider:
 
@@ -834,7 +834,7 @@ These packages have no v0.3.0 equivalent.
 | --- | --- |
 | `pkg/provider/...` | 41 new providers, from `alibaba` to `zai`, each with `New` and typed model constructors |
 | `pkg/mcp` | Model Context Protocol client: server tools as `[]ai.Tool`, resources, prompts, elicitation, Streamable HTTP, SSE and stdio transports, OAuth |
-| `pkg/harness` | Drives coding-agent runtimes in a sandbox. Adapters: `acp`, `claudecode`, `codex`, `cursor`, `deepagents`, `fx`, `githubcopilot`, `grokbuild`, `opencode` |
+| `pkg/harness` | Drives coding-agent runtimes in a sandbox. Adapters: `acp`, `claudecode`, `codex`, `cursor`, `deepagents`, `fx`, `githubcopilot`, `grokbuild`, `opencode`, `pi` |
 | `pkg/sandbox` | The sandbox session contract, with `sandbox/vercel` (Vercel Sandbox) and `sandbox/local` (an unisolated local shell) |
 | `pkg/tools/bash` | A bash tool over any sandbox session |
 | `pkg/devtools` | Records calls for local debugging and serves a viewer (`pkg/devtools/cmd/devtools`) |
@@ -842,5 +842,7 @@ These packages have no v0.3.0 equivalent.
 | `github.com/aarock1234/ai/otel` | OpenTelemetry integration (nested module) |
 | `github.com/aarock1234/ai/codemode` | Lets models write TypeScript that calls your tools (nested module) |
 | `github.com/aarock1234/ai/tui` | Runs an `ai.Agent` in a terminal UI (nested module) |
+| `github.com/aarock1234/ai/policyopawasm` | Runs OPA policies compiled to WebAssembly in process (nested module) |
+| `github.com/aarock1234/ai/sandboxshell` | An isolated in-memory bash sandbox (nested module) |
 
 `pkg/ai` also gained `GenerateVideo`, `StartVideo` and `GetVideoStatus`, `UploadFile` and `UploadSkill`, `StreamTranscribe`, `StreamTranslate`, `ConnectRealtime`, `Decide`, the batch functions (`StartBatch` and others), tool search and tool callers, and per-call telemetry and warning logging. See [feature parity](feature-parity.md) for the full list.

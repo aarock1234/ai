@@ -60,6 +60,12 @@ func (i DefaultOPAInput) MarshalJSON() ([]byte, error) {
 // with NormalizeOPADecision. When the evaluation fails the call is denied
 // with the failure as the reason, so that an unavailable policy engine
 // blocks tools instead of allowing them.
+//
+// A policy that produces no result (a path that does not exist, an unloaded
+// bundle, or a rule matching no branch) is not applicable, which lets the
+// call run without approval and without consulting the tool's own
+// NeedsApproval, as upstream does. Wrap tools with WrapMCPTools to give such
+// calls a fallback decision.
 func OPAPolicy(options OPAPolicyOptions) ai.ToolApprovalFunc {
 	return func(ctx context.Context, event ai.ToolApprovalEvent) (ai.ToolApprovalStatus, error) {
 		input := opaPolicyInput(ctx, options.ToInput, event)

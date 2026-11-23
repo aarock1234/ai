@@ -37,7 +37,7 @@ After the remaining roadmap phases landed, five independent reviewers re-read al
 
 ## Verification
 
-Final state, for each of the five modules (the core module, `otel/`, `codemode/`, `tui/` and `policyopawasm/`):
+Final state, for each of the six modules (the core module, `otel/`, `codemode/`, `tui/`, `policyopawasm/` and `sandboxshell/`):
 
 - `gofmt -l .` reports no files.
 - `go build ./...` succeeds.
@@ -45,4 +45,4 @@ Final state, for each of the five modules (the core module, `otel/`, `codemode/`
 - The pinned golangci-lint v2.15.0 reports 0 issues on `run --tests=false ./...`.
 - Cross-compiled builds pass for `linux/amd64`, `linux/arm64` and `darwin/arm64`.
 
-Nothing has been exercised at runtime, and no live provider calls were made. The pre-rewrite `*_test.go` files, which no longer compiled against the new API, were deleted at the owner's request; the repository has no tests. See [roadmap](roadmap.md) and [feature parity](feature-parity.md) for remaining work.
+At the end of the October 2026 rewrite nothing had been exercised at runtime, and no live provider calls had been made. Later live runs are recorded in the [roadmap](roadmap.md#live-runs). The pre-rewrite `*_test.go` files, which no longer compiled against the new API, were deleted at the owner's request; the repository has no tests. See [roadmap](roadmap.md) and [feature parity](feature-parity.md) for remaining work.
