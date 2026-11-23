@@ -3,6 +3,7 @@ package partialjson
 import (
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // scanState is a position in the JSON grammar.
@@ -39,7 +40,8 @@ func Fix(input string) string {
 	}
 
 	for index, character := range input {
-		f.scan(index, index+len(string(character)), character)
+		_, width := utf8.DecodeRuneInString(input[index:])
+		f.scan(index, index+width, character)
 	}
 
 	return f.complete()
