@@ -126,6 +126,10 @@ func completeOIDCScope(scope oidcScope) (oidcScope, error) {
 		return oidcScope{}, errors.New("failed to refresh oidc token: no project specified; try re-linking your project with `vc link`")
 	}
 
+	if !vercelIDPattern.MatchString(scope.projectID) {
+		return oidcScope{}, errors.New("failed to refresh oidc token: invalid project id")
+	}
+
 	return scope, nil
 }
 

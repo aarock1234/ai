@@ -286,7 +286,7 @@ func refreshCLIAccessToken(ctx context.Context, httpClient *http.Client, refresh
 		Error string `json:"error"`
 	}
 
-	status, err := doOAuthJSON(httpClient, request, &tokens, &failure)
+	status, err := doOAuthJSON(withoutRedirects(httpClient), request, &tokens, &failure)
 	if err != nil {
 		return oauthTokens{}, err
 	}
@@ -343,6 +343,21 @@ func discoverAuthorizationServer(ctx context.Context, httpClient *http.Client) (
 	}
 
 	return server, nil
+}
+
+// errOAuthRedirect reports an OAuth endpoint that answered a credential
+// request with a redirect.
+var errOAuthRedirect = errors.New("oauth endpoint redirects are not followed")
+
+// withoutRedirects returns a copy of client that does not follow redirects,
+// so that a refresh token or device code is never sent to another endpoint.
+func withoutRedirects(client *http.Client) *http.Client {
+	copied := *client
+	copied.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return errOAuthRedirect
+	}
+
+	return &copied
 }
 
 // doOAuthJSON sends a request and decodes a successful response into

@@ -240,7 +240,7 @@ func requestDeviceAuthorization(ctx context.Context, httpClient *http.Client, se
 
 	var failure oauthErrorResponse
 
-	if _, err := doOAuthJSON(httpClient, request, &response, &failure); err != nil {
+	if _, err := doOAuthJSON(withoutRedirects(httpClient), request, &response, &failure); err != nil {
 		return deviceAuthorization{}, err
 	}
 
@@ -355,7 +355,7 @@ func requestDeviceTokens(ctx context.Context, poll devicePoll) (deviceTokenAttem
 		return deviceTokenAttempt{}, fmt.Errorf("create device token request: %w", err)
 	}
 
-	response, err := poll.httpClient.Do(request)
+	response, err := withoutRedirects(poll.httpClient).Do(request)
 	if err != nil {
 		return deviceTokenAttempt{}, err
 	}
