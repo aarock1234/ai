@@ -3,7 +3,7 @@ module github.com/aarock1234/ai/otel
 go 1.27.0
 
 require (
-	github.com/aarock1234/ai v0.4.0
+	github.com/aarock1234/ai v0.6.1
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 )
