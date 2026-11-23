@@ -164,6 +164,13 @@ func validateTextGenerationConfig(config textGenerationConfig) error {
 		}
 	}
 
+	if config.toolApprovalSecret != nil && len(config.toolApprovalSecret) == 0 {
+		return &InvalidArgumentError{
+			Parameter: "toolApprovalSecret",
+			Message:   "toolApprovalSecret must not be empty; leave it nil to disable signing",
+		}
+	}
+
 	if err := config.timeout.validate(); err != nil {
 		return err
 	}

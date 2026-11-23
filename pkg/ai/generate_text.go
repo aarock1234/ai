@@ -49,7 +49,8 @@ type GenerateTextOptions struct {
 
 	// ToolApprovalSecret signs tool approval requests with HMAC-SHA256 and
 	// verifies the signatures of approvals in the prompt, so that clients
-	// cannot forge approvals.
+	// cannot forge approvals. An empty, non-nil secret is rejected with an
+	// *InvalidArgumentError.
 	ToolApprovalSecret []byte
 
 	// ToolCallers maps tool names to the callers that may call them:

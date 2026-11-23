@@ -52,7 +52,8 @@ type StreamTextOptions struct {
 	ToolApproval ToolApprovalConfiguration
 
 	// ToolApprovalSecret signs tool approval requests and verifies the
-	// approvals in the prompt.
+	// approvals in the prompt. An empty, non-nil secret is rejected with an
+	// *InvalidArgumentError.
 	ToolApprovalSecret []byte
 
 	// ToolCallers maps tool names to the callers that may call them, as in
