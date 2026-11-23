@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -105,7 +106,7 @@ func Dial(ctx context.Context, rawURL string, options DialOptions) (*Conn, error
 func httpURL(rawURL string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return "", fmt.Errorf("parse websocket url: %w", err)
+		return "", fmt.Errorf("parse websocket url: %w", withoutQuery(err))
 	}
 
 	switch parsed.Scheme {
@@ -152,7 +153,7 @@ func sendHandshake(ctx context.Context, target, key string, options DialOptions)
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build websocket handshake: %w", err)
+		return nil, fmt.Errorf("build websocket handshake: %w", withoutQuery(err))
 	}
 
 	request.Header = options.Header.Clone()
@@ -171,10 +172,25 @@ func sendHandshake(ctx context.Context, target, key string, options DialOptions)
 
 	response, err := handshakeClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("send websocket handshake: %w", err)
+		return nil, fmt.Errorf("send websocket handshake: %w", withoutQuery(err))
 	}
 
 	return response, nil
+}
+
+// withoutQuery returns err with the query string removed from the URL a
+// *url.Error quotes. Connection URLs carry credentials in their query, such
+// as bridge tokens and API keys, and these errors reach logs.
+func withoutQuery(err error) error {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if !ok {
+		return err
+	}
+
+	redacted := *urlErr
+	redacted.URL, _, _ = strings.Cut(urlErr.URL, "?")
+
+	return &redacted
 }
 
 // acceptHandshake validates the server response and returns the upgraded
