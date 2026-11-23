@@ -21,8 +21,6 @@ type responsesOngoingToolCall struct {
 	// applyPatch tracks the streamed diff of an apply patch call.
 	applyPatch *responsesPatchProgress
 
-	toolSearchExecution string
-
 	// suppressInputStreaming buffers the input of a parallel wrapper call
 	// until it is known whether the call expands.
 	suppressInputStreaming bool

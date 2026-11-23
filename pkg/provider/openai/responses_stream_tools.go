@@ -33,15 +33,9 @@ func (s *responsesStreamState) codeInterpreterAdded(index int, item responsesCod
 func (s *responsesStreamState) toolSearchAdded(index int, item responsesToolSearchCallItem) {
 	toolName := s.context.toolName("tool_search")
 
-	execution := item.Execution
-	if execution == "" {
-		execution = "server"
-	}
-
 	s.ongoingToolCalls[index] = &responsesOngoingToolCall{
-		toolName:            toolName,
-		toolCallID:          item.ID,
-		toolSearchExecution: execution,
+		toolName:   toolName,
+		toolCallID: item.ID,
 	}
 
 	if item.Execution == "server" {
