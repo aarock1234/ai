@@ -319,7 +319,9 @@ func (s *chatStream) Flush() ([]model.StreamPart, error) {
 	parts = append(parts, s.endText()...)
 
 	// Deltas that never received a name are forwarded so that the tracker
-	// rejects them as invalid.
+	// rejects them as invalid. The first rejection is reported as an error
+	// part with an error finish reason, and the stream still closes with its
+	// remaining tool calls and the Finish part.
 	for _, index := range s.pendingOrder {
 		pending, ok := s.pending[index]
 		if !ok {
@@ -334,7 +336,9 @@ func (s *chatStream) Flush() ([]model.StreamPart, error) {
 		parts = append(parts, toolParts...)
 
 		if err != nil {
-			return parts, err
+			parts = append(parts, s.Fail(err))
+
+			break
 		}
 	}
 
