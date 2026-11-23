@@ -178,7 +178,7 @@ func do(request Request, httpRequest *http.Request) (*http.Response, error) {
 		client = http.DefaultClient
 	}
 
-	response, err := client.Do(httpRequest)
+	response, err := withCredentialSafeRedirects(client).Do(httpRequest)
 	if err != nil {
 		return nil, transportError(httpRequest.Context(), request.URL, err)
 	}
